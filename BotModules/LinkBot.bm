@@ -1,0 +1,129 @@
+package BotModules::LinkBot; #Peter De Wachter <pdewacht@vub.ac.be>
+use URI::Find;
+use WWW::Shorten 'Bitly', ':short';
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub RegisterConfig {
+	my $self = shift;
+	$self->SUPER::RegisterConfig(@_);
+	$self->registerVariables(
+		# [name, save?, settable?, default]
+		['url', 1, 1, {}],
+	);
+#    $ENV{GOOGLE_USERNAME} = 'check.infogroep';
+#    $ENV{GOOGLE_PASSWORD} = 'lays3;looses';
+	$ENV{BITLY_USERNAME} = 'checkig';
+	$ENV{BITLY_TOKEN} = 'R_aa01a9ada6724f79a8f1a7b7dd605812';
+}
+
+sub Heard {
+	my $self = shift;
+	$self->scanForUrl(@_);
+	return $self->SUPER::Heard(@_);
+}
+
+sub Told {
+	my $self = shift;
+	$self->scanForUrl(@_);
+	return $self->SUPER::Told(@_);
+}
+
+sub scanForUrl {
+	my $self = shift;
+	my ($event, $message) = @_;
+
+	return 0 if $event->{'from'} =~ /clojbot/i;
+
+	return (URI::Find->new(
+			sub {
+				my $url = $_[1];
+				my $title = $url;
+				if ($message =~ / #(.*)$/) {
+					$title = $1;
+				}
+				$self->reportOnUrl($event, $_[1]);
+				open F, '>>', 'feeds/url-history' || return;
+				print F "$event->{'from'}\t$event->{'time'}\t$title\t$url\n";
+				close F;
+			}
+		)->find(\$message) == 1);
+}
+
+sub reportOnUrl {
+	my $self = shift;
+	my ($event, $url) = @_;
+
+	if ($url =~ m,youtube\.com/watch\?v=,) {
+		$self->getURI($event, $url, 'youtube');
+	} else {
+		$self->spawnHead($event, $url, 1);
+	}
+}
+
+sub GotURI {
+	my $self = shift;
+	my ($event, $url, $contents, $type) = @_;
+
+	if ($type eq 'youtube') {
+#    $contents =~ /"video_id":"([^"]+)"/ || return;
+#    my $videoId = $1;
+		$contents =~ /<title>([^<]*)<\/title>/ || return;
+		my $title = $1;
+		$self->say($event, $title);
+#    $self->spawnHead($event, "https://www.youtube.com/get_video_info?video_id=$videoId", 0, $title);
+	} else {
+		$self->SUPER::GotURI(@_);
+	}
+}
+
+sub spawnHead {
+	my $self = shift;
+	my ($event, $url, $shorten, $title) = @_;
+	$self->spawnChild($event, 'HEAD',
+		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', $url ],
+		'HttpSize', [ $url, $shorten , $title]);
+}
+
+sub ChildCompleted {
+	my $self = shift;
+	my ($event, $type, $output, $url, $shorten, $title) = @_;
+
+	my $message = length($url) > 50 ? short_link($url, $ENV{'BITLY_USERNAME'}, $ENV{'BITLY_TOKEN'}) : "";
+	if ($type eq 'HttpSize') {
+		$output =~ /^Content-Length:\s*([0-9]+)\s*$/im;
+		my $size = $1;
+		$output =~ /^Content-Type:\s*(\S+)\s*$/im;
+		my $type = $1;
+
+		if (defined($size) and (not $shorten or $size > 1024*1024/4)) {
+			if ($shorten) {
+				$url =~ s/.*\/(.+)/$1/;
+				$url =~ s/%([0-9A-Za-z]{2})/chr hex $1/ge;
+			}
+			$message .= " - " if length($message) > 0;
+			$message .= $url;
+			$message .= ": " . $self->formatSize($size);
+			$message .= " [$type]" if defined($type);
+		}
+	}
+	$self->say($event, $message) if length($message) > 0;
+	$self->SUPER::ChildCompleted(@_);
+}
+
+sub formatSize {
+	my $self = shift;
+	my ($size) = @_;
+
+	my $s = int($size / 1024 / 1024 / 1024 + 0.5);
+	return "$s GB" if $s > 0;
+
+	$s = int($size / 1024 / 1024 + 0.5);
+	return "$s MB" if $s > 0;
+
+	$s = int($size / 1024 + 0.5);
+	return "$s KB" if $s > 0;
+
+	return "$size bytes";
+}

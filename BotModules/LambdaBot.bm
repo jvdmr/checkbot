@@ -1,0 +1,53 @@
+package BotModules::LambdaBot; # Joris Vandermeersch <joris@infogroep.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+2;
+
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+      # [ name, save?, settable? ]
+        [ 'language', 1, 1, 'scheme' ],
+    );
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^> (.*)$/osi) {
+		return $self->handleLambda($event, $1);
+	}
+	else {
+		return $self->SUPER::Told(@_);
+	}
+}
+
+sub Heard {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^> (.*)$/osi) {
+		return $self->handleLambda($event, $1);
+	}
+	else {
+		return $self->SUPER::Heard(@_);
+	}
+}
+
+sub handleLambda {
+	my ($self, $event, $code) = @_;
+	if ($event->{'from'} =~ /^omega$/) {
+		return $self->Eval($event, $code);
+	} else {
+		return $self->say($event, "fuckoff, kleine kindjes mogen ni spelen");
+	}
+}
+
+sub Eval {
+	my ($self, $event, $code) = @_;
+	$code =~ s/"/\\"/g;
+	$self->debug($code);
+	my $result = `/usr/bin/mzscheme -e "$code" 2>&1`;
+	$self->say($event, $result);
+	return 0;
+}

@@ -1,0 +1,135 @@
+package BotModules::Mpg8;
+use IO::Socket;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'mpg8' => 'Shows the currently playing song. find out the rest for yourself'
+	};
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^\s*mpg8\W*$/osi) {
+		$self->say($event,mpg8($self,$event,"now"));
+	} elsif ($message =~ /^\s*mpg8\s*(.*)$/osi) {
+		my $cmd = $1;
+		$self->say($event,mpg8($self,$event,$1));
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0; # we've dealt with it, no need to do anything else.
+}
+
+sub fmttime {
+	my $seconds = shift;
+	return sprintf("%d:%02d", $seconds / 60, $seconds % 60);
+}
+
+sub mpg8 {
+	my $self = shift;
+	my $event = shift;
+	my $cmd = shift;
+
+	my $sock = new IO::Socket::INET(
+		PeerAddr => 'mpg8.rave.org',
+		PeerPort => 6669,
+		Proto => 'tcp');
+	return "mpg8, what's that?" unless $sock;
+
+	print $sock "user-agent checkMpg8\r\n";
+	print $sock "$cmd\r\n";
+	print $sock "ping\r\n";
+	$sock->flush();
+
+	my $tmp = <$sock>;
+	while ($tmp !~ /ENDMSG/){
+		# skip all messages
+		$self->say($event,$tmp);
+		$tmp = <$sock>;
+	}
+
+	if ($cmd =~ /playlist|history|now/osi) {
+		return mpg8_playlist($self, $event, $cmd, $sock);
+	}
+
+	if ($cmd =~ /get/osi) {
+		return "sorry, you really don't want me to sing"
+	}
+
+	my $answer = <$sock>;
+	my $lastanswer = "";
+	while ($answer !~ /PONG|ERROR/osi){
+		$lastanswer = $answer;
+		$answer = <$sock>;
+	}
+
+	$sock->close();
+
+	return $lastanswer;
+}
+
+sub mpg8_playlist {
+	my $self = shift;
+	my $event = shift;
+	my $cmd = shift;
+	my $sock = shift;
+
+	my $total_length = 0;
+	my @list;
+
+	my $answer = <$sock>; # PLAYING 117.070965
+	return "all seems quiet" unless $answer =~ /^PLAYING (.*)$/ or $cmd =~ /history/osi;
+	my $playing = $1;
+	$answer = <$sock> unless $cmd =~ /history/osi;
+	while ($answer !~ /^ENDPLAYLIST$/){
+		if ($answer =~ /^[0-9]+$/) {
+			my $songid = scalar($answer);
+			my $artist = <$sock>;
+			my $song = <$sock>;
+			my $length = scalar(<$sock>);
+			my $user = <$sock>;
+			my $file = <$sock>;
+			$artist =~ s/^\s*|\s*$|\r|\n//g;
+			$song =~ s/^\s*|\s*$|\r|\n//g;
+			$user =~ s/^\s*|\s*$|\r|\n//g;
+			$file =~ s/^\s*|\s*$|\r|\n//g;
+
+			$total_length += $length;
+			#push(@list, [$songid, fmttime($length), $artist, $song, $user]);
+			push(@list, "$song by $artist");
+		}
+		$answer = <$sock>;
+	}
+
+	$total_length -= $playing;
+
+	my $nr = 0;
+	return @list[0] if $cmd =~ /now/osi ;
+	foreach my $song (@list) {
+		$nr++;
+		if ($nr < 4){
+			$self->say($event, $song);
+		} else {
+			$self->directSay($event, $song);
+		}
+	}
+
+	$answer = <$sock>;
+	while ($answer !~ /^(PONG|ERROR)?$/osi){
+		$answer = <$sock>;
+	}
+
+	$sock->close();
+
+	if ($nr < 4){
+		return "That was all :)";
+	} else {
+		return "There's more, rest /msg'ed";
+	}
+}

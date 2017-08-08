@@ -1,0 +1,160 @@
+package BotModules::Boe; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+# RegisterConfig - Called when initialised, should call registerVariables
+sub RegisterConfig {
+	my $self = shift;
+	$self->SUPER::RegisterConfig(@_);
+	$self->registerVariables(
+		# [ name, save?, settable? ]
+		['boechance', 1, 1, 75],
+	);
+}
+
+sub source {
+	my ($self, $event, $dir) = @_;
+	my @qlist = (
+		"I'm not a bot, I'm a real boy!",
+	);
+
+	return $qlist[rand @qlist];
+}
+
+sub streak {
+	my ($self, $event, $dir) = @_;
+	my @qlist = (
+		"/me rips off his pants and sprints across the channel",
+	);
+
+	return $qlist[rand @qlist];
+}
+
+sub changedir {
+	my ($self, $event, $dir) = @_;
+	my @qlist = (
+		"cd: $dir: No such file or directory",
+	);
+
+	return $qlist[rand @qlist];
+}
+
+sub listing {
+	my ($self, $event) = @_;
+	my @qlist = (
+		"ls: .: Permission denied",
+		"hardcore/        lesbian/    gay/    soft/\nmasturbation/    toys/       SM/     Girls Gone Wild/",
+	);
+
+	return $qlist[rand @qlist];
+}
+
+sub fliptable {
+	my ($self, $event, $dir) = @_;
+	my @qlist = (
+		"(╯°□°）╯︵ ┻━┻",
+	);
+
+	return $qlist[rand @qlist];
+}
+
+sub quote {
+	my ($self, $event) = @_;
+	my @qlist = (
+		"[" . $event->{'from'} . " noisily removes his pants.]",
+		"[A cat slowly rolls a watermelon up onto shore.]",
+		"[A lone cricket bangs out a rim shot.]",
+		"[A tree falls in a forest, but no one is around to hear it.]",
+		"[A tumbleweed drifts past]",
+		"[Everyone falls silent and stares.]",
+		"[Everyone stares at " . $event->{'from'} . ".]",
+		"[Frost gathers on the windows.]",
+		"[Meanwhile, in " . $event->{'from'} . "'s pants ...]",
+		"[Nothing happens.]",
+		"[Off in the corner, someone coughs.]",
+		"[Oh no you di'nt.]",
+		"[Somewhere in the distance, a dog barks.]",
+		"[Somewhere in the distance, you hear Uncle Pedro smacking his forehead.]",
+		"[The expansion of the universe accelerates slightly.]",
+		"[There is the sound of a banjo falling hundreds of feet and hitting a cat.]",
+		"[Time passes.]",
+		"[You feel your magical energy drain away.]",
+		"[You hear a sound reminiscent of an elephant stepping on a peanut.]",
+		"[You hear in the distance the chirping of a song bird.]",
+		"[You hear the sounds of conflict to the southeast.]",
+		"[You hear the splashing of a naiad.]",
+		"[You suddenly realize it is unnaturally quiet.]",
+	);
+
+	return $qlist[rand @qlist];
+}
+
+sub goodnight {
+	my ($self, $event) = @_;
+	my @qlist = (
+		"$event->{'from'}: sleep tight!",
+		"$event->{'from'}: sleep is for wussies.",
+		"$event->{'from'}: good night!",
+		"$event->{'from'}: don't let the bed bugs bite!",
+		"$event->{'from'}: not me, I got waay too much work",
+		"$event->{'from'}: yeah, me too soon",
+		"buh... wha?..",
+		"/me fell asleep half an hour ago",
+		"/me *rrrooonnnnzzz*",
+		"/me gets another coke",
+		"/me gets another redbull",
+		"/me gets another nalu",
+		"/me gets another burn",
+	);
+
+	return $qlist[rand @qlist];
+}
+
+
+sub Heard {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^\W*bo[oe]\W*$/osi) {
+		$self->say($event, "down with this sort of thing!");
+	} elsif ($message =~ /^\W*m[o0]{2,}\W*$/osi) {
+		$self->sayOrEmote($event, "/me mutilates $event->{'from'}");
+	} elsif ($message =~ /^ls$/osi) {
+		$self->say($event, $self->listing($event));
+	} elsif ($message =~ /^cd (.*)$/osi) {
+		$self->say($event, $self->changedir($event, $1));
+	} elsif ($message =~ /^nn\??$/osi) {
+		$self->sayOrEmote($event, $self->goodnight($event));
+	} elsif ($message =~ /^!streak\b/osi) {
+		$self->sayOrEmote($event, $self->streak($event));
+	} elsif ($message =~ /^!source\b/osi) {
+		$self->sayOrEmote($event, $self->source($event));
+	} elsif ($message =~ /^(?:s+h+i+t+|c+r+a+p+)[.!]*$/osi) {
+#    return 0 if rand 100 > $self->{'boechance'};
+		$self->sayOrEmote($event, $self->fliptable($event));
+	} elsif ($message =~ /\bfuck\b/osi) {
+#    return 0 if rand 100 > $self->{'boechance'};
+		$self->sayOrEmote($event, $self->fliptable($event));
+	} elsif ($message =~ /^\.\.\.$/osi) {
+		return 0 if rand 100 > $self->{'boechance'};
+		$self->say($event, $self->quote($event));
+	} elsif ($message =~ /^good\.?$/osi) {
+		return 0 if rand 100 > $self->{'boechance'};
+		$self->say($event, "$event->{'from'}: I know, right?!");
+	} else {
+		return $self->SUPER::Heard(@_);
+	}
+	return 0;
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+#  if ($message =~ /resto/osi) {
+#    $self->say($event, "~fret");
+#  } else {
+		return $self->SUPER::Told(@_);
+#  }
+#  return 0;
+}
+

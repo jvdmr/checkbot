@@ -1,0 +1,24 @@
+package BotModules::StupidNick; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+#sub RegisterConfig {
+#    my $self = shift;
+#    $self->SUPER::RegisterConfig(@_);
+#    $self->registerVariables(
+#      # [ name, save?, settable? ]
+#    );
+#}
+
+sub SpottedJoin {
+    my $self = shift;
+    my ($event, $channel, $who) = @_;
+    
+    my $nick = $event->{'from'};
+    my $stupid = ($nick =~ tr/A-Za-z0-9_//c);
+    if ($stupid > 1) {
+        $event->{'bot'}->kick($event->{'target'}, $nick, "nick too stupid");
+    }
+    return 1;
+}

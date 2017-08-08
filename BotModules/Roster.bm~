@@ -1,0 +1,105 @@
+package BotModules;
+
+package BotModules::Roster; # Dries Harnie <dharnie@vub.ac.be> en ook een beetje Joris Vandermeersch <jovdmeer@vub.ac.be>
+use base qw(BotModules);
+
+use Roster;
+use Time::Local;
+use URI;
+use URI::QueryParam;
+
+sub weeknr {
+  my $time = timelocal(0,0,0,30,8,(localtime)[5]); # 30 sept $current_year
+
+  $time = timelocal(0,0,0,30,8,(localtime)[5]-1) if ($time > time());
+
+  # backtrack to monday
+  $time -= 86400 until 1 == (localtime($time))[6];
+
+  return 1+int((time()-$time)/7/86400);
+}
+
+sub formatEntry { 
+  my $ref = shift;
+  unless (defined $ref and @$ref) {
+    return "Yay! geen les!\n";
+  }
+
+  return join ", ",
+    map sprintf("%s (%d-%d) in %s\n", map {$_ || "??"} ($_->subject, $_->from, $_->to, $_->room)),
+    @$ref;
+}
+
+sub Initialise {
+  my $self = shift;
+  delete $INC{"Roster.pm"}; # Hack om Roster te reloaden
+  require "Roster.pm";
+  $self->{"_rc"} = Roster::Cache->new("/home/check/.uurrooster");
+}
+
+sub Told {
+  my $self = shift;
+  my ($event, $message) = @_;
+  if ($message =~ /^\s*\b((?:uur)?rooster|les(?:sen)?)\b\s*\b(\w+)\b/i && (my $class = $2) !~ /^(vandaag|nu|straks|(?:over)?morgen?|(?:eer)?gisteren?|(?:maan|dins|woens|donder|vrij|zater|zon)dag)$/) {
+    my $when = "nu";
+    if ($message =~ /(vandaag|nu|straks|(?:over)?morgen?|(?:eer)?gisteren?|(?:maan|dins|woens|donder|vrij|zater|zon)dag)/) {
+      $when = $1 ;
+    }
+    if ($self->{"_rc"}->add_nick("last",$class)){
+      $self->{"_rc"}->fetch_callback($self, $event, $class, $when);
+      return 0;
+    }
+    my $id = $self->{"_rc"}->find_nick($class);
+    if (defined $id) {
+      $self->say($event, $id . ":");
+      $self->{"_rc"}->fetch_callback($self, $event, $id, $when);
+    } else {
+      $self->say($event, "Sorry, welke richting volgt " . $class . " ook alweer?");
+    }
+  } elsif ($message =~ /^\s*(\w+)\b\s*volgt?\s*(\w+|["'].*["'])/) {
+    if ($self->{"_rc"}->add_nick($1 eq "ik" ? $event->{from} : $1 ,$2)) {
+      $self->say($event, "Okay.");
+    } else { 
+      $self->say($event, "Bzzt, die les ken ik niet. geldige richtingen: " .
+                         join ", ", sort $self->{"_rc"}->urls());
+    }
+  } elsif ($message =~ /(?:vak(?:ken)?|les(?:sen)?)/) {
+    my $when = "nu";
+    my $id = $self->{"_rc"}->find_nick($event->{from});
+    if ($message =~ /(vandaag|nu|straks|(?:over)?morgen?|(?:eer)?gisteren?|(?:maan|dins|woens|donder|vrij|zater|zon)dag)/) {
+      $when = $1 ;
+    }
+    if (defined $id) {
+      $self->{"_rc"}->fetch_callback($self, $event, $id, $when);
+    } else {
+      $self->say($event, "Sorry, welke richting volg jij ook alweer?");
+    }
+  } elsif ($message =~ /^\s*(richtingen|lessen)/) {
+    $self->richtingen($event);
+  } else {
+    return $self->SUPER::Told(@_);
+  }
+}
+
+sub GotURI {
+  my $self = shift;
+  my ($event, $url, $cont, $arg) = @_;
+  $arg->($cont, $event);
+}
+
+sub richtingen {
+  my ($self, $event) = @_;
+  my @hold;
+  foreach my $key (sort $self->{"_rc"}->urls()) {
+    my $url = $self->{"_rc"}->_url($key);
+    my ($expl) = URI->new($url,"http")->query_param("identifier") =~ m!(?<=Computerwetenschappen)\s*/?(.+)!i;
+    $expl =~ s/GRP/Groep/;
+    $expl =~ s/VP/Verkort/;
+    push @hold, "$key ($expl)";
+  }
+
+  local $" = ", ";
+  $self->say($event, "Richtingen: @hold");
+}
+
+42;

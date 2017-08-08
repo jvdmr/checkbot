@@ -1,0 +1,59 @@
+package BotModules::Weather;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+# site 503't driekwart van de keren, oplossing = fetch tot ge iets bruikbaar
+# hebt, obviously geen goed idee.
+
+use HTML::TreeBuilder;
+use HTML::Entities;
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^\s*(?:weer|weather)(?:\s+([A-Za-z0-9]+))?\s*$/i) {
+		my $city = $1 ? $1 : "brussels" ;
+		my $url = "http://www.thefuckingweather.com/?zipcode=$city&CELSIUS=yes";
+		$self->debug($url);
+		$self->getURI($event, $url);
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0;
+}
+
+sub GotURI {
+	my $self = shift;
+	my ($event, $url, $html) = @_;
+
+	$self->debug($html);
+
+	my $p = new HTML::TreeBuilder;
+	$p->parse($html);
+	$p->eof();
+
+	sub clean {
+		local ($_) = @_;
+		$_ = decode_entities($_->{data});
+		s/\xA0/ /g; s/\s+/ /g; s/^\s//; s/\s$//;
+		return $_ || '?';
+	}
+
+#  my @all = map [ map { clean $_ } @{$_->{cells}} ], grep $_->{class} eq 'tabledata', @{$tables->[0]{rows}};
+#  my @data = defined($wanneer) ? grep { $_->[0] eq lc($wanneer) } @all : @all;
+
+#  unless (@data) {
+#    if (defined($wanneer)) {
+#      my @w = map { $_->[0] } @all;
+#      my $last = pop @w;
+#      my $list = join(', ', @w) . " en $last";
+#      $self->say($event, "Sorry, enkel data voor $list.");
+#    } else {
+#      $self->say($event, "Sorry, er gaat iets weirds mis");
+#    }
+#  }
+
+#  my @d = @{$data[0]};
+#  $self->say($event, "$d[0]: temp $d[1]-$d[2]; wind $d[3] $d[4]; $d[5]");
+}

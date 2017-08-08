@@ -1,0 +1,44 @@
+################################
+# Dice rolling module          #
+################################
+
+package BotModules::Dice;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        'ndn' => 'Requests that the bot rolls the dice.'
+    };
+}
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    if ($message =~ /^\s*(\d+)\s*d\s*(\d+)\s*$/osi) {
+        $self->say($event, roll($1, $2));
+    } else {
+        return $self->SUPER::Told(@_);
+    }
+    return 0; # we've dealt with it, no need to do anything else.
+}
+
+
+sub roll {
+    my ($nr, $max) = @_;
+    my @res;
+    my $total = 0;
+
+    return 'if (ndice > 20) return -EDICEROLLINGOFFTHETABLE;' if $nr > 20;
+
+    for (1 .. $nr) {
+        my $i = int(rand($max) + 1);
+        push @res, $i unless $nr < 2;
+        $total += $i;
+    }
+
+    return join(" + ", @res) . " = $total";
+}

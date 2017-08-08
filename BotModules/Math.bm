@@ -1,0 +1,87 @@
+package BotModules;
+
+package BotModules::Math; # Joris Vandermeersch <jovdmeer@vub.ac.be>
+use base qw(BotModules);
+
+use Math::Expr;
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'' => 'this is a simple calculator module.',
+		'compute *expr*' => 'return the outcome of *expr*, which is a simple mathematic expression',
+		'math *expr*' => 'return the outcome of *expr*, which is a simple mathematic expression',
+	};
+}
+
+sub Told {
+  my $self = shift;
+  my ($event, $message) = @_;
+  if ($message =~ /^\s*(compute|math)/i) {
+		$self->say($event, "debug: ".$1);
+#     if ($message =~ /^\s*\w+\s+(\d*(?:\.\d*)?)\s*(sqrt?|\*|\/|\+|\-|\S*)\s*(\d*(?:\.\d*)?)\s*(.*)/) {
+#       if ($message !~ /:|;|&|\||<|>|\{|\}/) {
+#         my ($arg1,$op,$arg2,$rst) = ($1,$2,$3,$4);
+# #        $self->say($event, "debug: a = '".$arg1."', b = '".$op."', c= '".$arg2."', d= '".$rst."'"); #debugging
+#         my $tempmessage = $arg1 . " " . $op . " " . $arg2 . " = " . ($result = calculate($arg1,$op,$arg2));
+#         my $newmessage = "compute " . $result . " " . $rst;
+#         $self->say($event, $tempmessage) if ($rst =~ /^$/);
+#         output($self, $event, $newmessage) unless ($rst =~ /^$/);
+#         return 1;
+#       } else {
+#         $self->say($event, "OI! what's the big idea!?");
+#       }
+#     }
+  } else {
+    return $self->SUPER::Told(@_);
+  }
+  return 0;
+}
+
+sub output {
+  my ($self,$event,$message) = @_;
+  if ($message =~ /^\s*\w+\s+(\d*(?:\.\d*)?)\s*(\+|\-|\*|\/|sqrt?|\S*|\w+)\s*(\d*(?:\.\d*)?)\s*(.*)/) {
+    my ($arg1,$op,$arg2,$rst) = ($1,$2,$3,$4);
+#    $self->say($event, "debug: a = '".$arg1."', b = '".$op."', c= '".$arg2."', d= '".$rst."'"); #debugging
+    my $tempmessage = $arg1 . " " . $op . " " . $arg2 . " = " . ($result = calculate($arg1,$op,$arg2));
+    my $newmessage = "compute " . $result . " " . $rst;
+    $self->say($event, $tempmessage) if ($rst =~ /^$/ || $result =~ /DOES/);
+    $op = quotemeta $op;
+    output($self, $event, $newmessage) unless ($rst =~ /^$/ || $rst =~ /^$op\s*$arg2/i);
+    if ($rst =~ /^$op\s*$arg2/) {
+      $self->say($event, "result up to here is " . $result . ". going any further could kill me,"
+                          . " so either clean it up or suck on it");
+    }
+    return 1;
+  }
+}
+
+sub calculate {
+  my ($arg1, $op, $arg2) = @_;
+  if ($arg1|$arg2 < 1e+10) {
+    if ($op =~ /^\+/) {
+      return $arg1 + $arg2;
+    } elsif ($op =~ /^-/) {
+      return $arg1 - $arg2;
+    } elsif ($op =~ /^\*|x/) {
+      return $arg1 * $arg2;
+    } elsif ($op =~ /^\//) {
+      return $arg1 / $arg2;
+    } elsif ($op =~ /^sqrt$/ && $arg1 =~ /^$/) {
+      return sqrt($arg2);
+    } elsif ($op =~ /^sqr$/ && $arg1 =~ /^$/) {
+      return $arg2**2;
+    } elsif ($op =~ /^sqrt$/ && $arg2 =~ /^$/) {
+      return sqrt($arg1);
+    } elsif ($op =~ /^sqr$/ && $arg2 =~ /^$/) {
+      return $arg1**2;
+    } else {
+      return "DOES NOT COMPUTE!!!1!!";
+    }
+  } else {
+    return "DOES NOT COMPUTE!!!1!!";
+  }
+}
+
+

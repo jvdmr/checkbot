@@ -1,0 +1,49 @@
+package BotModules::Warning;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+      # [ name, save?, settable? ]
+        [ 'last_baffleds', 0, 0, [0, 0, 0, 0, 0, 0]],
+        [ 'last_warning',  0, 0, 0 ],
+    );
+}
+
+
+sub Baffled {
+    my $self = shift;
+    my ($event, $message) = @_;
+    my $now = time;
+
+    return $self->SUPER::Baffled(@_) unless ($event->{level} == 1);
+    $self->debug("last warning: ", $self->{last_warning});
+    $self->debug("now: ", $now);
+    return 0 if ($now - 60 < $self->{last_warning});
+
+    my $time6 = $self->{last_baffleds}->[0];
+    my $time4 = $self->{last_baffleds}->[2];
+    my $time2 = $self->{last_baffleds}->[4];
+    my $count = 0;
+    my $overload = 0;
+   
+    if ($now - 60 < $time2) {
+        ($count, $overload) = (3, $now - $time2);
+    } elsif ($now - 75 < $time4) {
+        ($count, $overload) = (5, $now - $time4)
+    } elsif ($now - 90 < $time6) {
+        ($count, $overload) = (7, $now - $time6);
+    } else {
+        shift @{$self->{last_baffleds}};
+        push @{$self->{last_baffleds}}, $now;
+        return $self->SUPER::Baffled(@_);
+    }
+
+    $self->{last_warning} = $now;
+    $self->say($event, "Would you /please/ stop playing with me? $count messages in $overload seconds is too many.");
+    return 0;
+}

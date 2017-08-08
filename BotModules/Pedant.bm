@@ -1,0 +1,39 @@
+package BotModules::Pedant; # Joris Vandermeersch <joris.vdmr@gmail.com>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+2;
+
+sub RegisterConfig {
+	my $self = shift;
+	$self->SUPER::RegisterConfig(@_);
+	$self->registerVariables(
+		# [ name, save?, settable? ]
+		['hoedje', 1, 1],
+	);
+}
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'pedant <nick>' => 'Geef het hoedje aan <nick>',
+		'pedant' => 'Toont wie het hoedje heeft',
+	};
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^pedant (.*)$/) {
+		my $who = $1;
+		$self->{'hoedje'} = $who;
+		$self->saveConfig();
+		$self->emote($event, "geeft het pedant hoedje aan $who");
+		return 0;
+	} elsif ($message =~ /^pedant$/) {
+		$self->say($event, (length $self->{'hoedje'} ? $self->{'hoedje'} : "niemand") . " heeft het pedant hoedje");
+		return 0;
+	}
+	return $self->SUPER::Told(@_);
+}
+

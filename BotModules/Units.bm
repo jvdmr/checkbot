@@ -1,0 +1,22 @@
+package BotModules::Units; #Dries Harnie <dharnie@vub.ac.be>
+use base qw(BotModules);
+
+sub Initialise {
+  delete $INC{"Math/Units.pm"};
+  #delete $BotModules::Units::{convert};
+  #delete $Math::Units::{$_} for keys %Math::Units::;
+  require "Math/Units.pm";
+}
+1;
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    if ($message =~ /^\s*convert\s+(\d+(?:\.\d*)?)\s*(\w+)\s+(?:in)?to\s+(\w+)/i) {
+      eval { my $res = Math::Units::convert($1,$2,$3); $self->say($event, "$1 $2 = $res $3"); };
+      $self->say($event, $@) if ($@);
+    } else {
+      return $self->SUPER::Told(@_);
+    }
+    return 0;
+}

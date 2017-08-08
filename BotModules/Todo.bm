@@ -1,0 +1,89 @@
+package BotModules;
+
+package BotModules::Todo; # Joris Vandermeersch <jovdmeer@vub.ac.be>
+use base qw(BotModules);
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'' => "keeps your personal todo list and reminds you when asked. syntax:\n".
+		"  check todo stuff   -> adds stuff to your todo list.\n".
+		"  check todo         -> prints your whole todo list."
+	};
+}
+
+# RegisterConfig - Called when initialised, should call registerVariables
+sub RegisterConfig {
+	my $self = shift;
+	$self->SUPER::RegisterConfig(@_);
+	$self->registerVariables(
+		# [ name, save?, settable? ]
+		['todo', 1, 1, []],
+	);
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^\s*todo\s*$/){
+		telltodo($self,$event);
+		return 0;
+	} elsif ($message =~ /^\s*todo\s+(.*)$/){
+		my $todo=$1;
+		my $todowho=$event->{'from'};
+		my @tmp = ($todowho, $todo);
+		push(@{$self->{'todo'}},\@tmp);
+		$self->saveConfig();
+		$self->say($event,"Ok, I've added it to your todolist, $todowho.");
+		return 0;
+	} elsif ($message =~ /^\s*I?\s*(?:did|done)\s+(.*)$/osi){
+		my $done=$1;
+		if (forgettodo($self,$event,$done) == 0) {
+			$self->say($event,"Good job $event->{'from'}!");
+		} else {
+			$self->say($event,"But you didn't have to do anything with $done...");
+		}
+		return 0;
+	}
+	return 1; 
+}
+
+sub telltodo {
+	my ($self,$event)=@_;
+	my $user = $event->{'from'};
+	my $count = 0;
+	$self->say($event,"$user\'s todolist:");
+	foreach (@{$self->{'todo'}}) {
+		my ($tellwho,$tellwhat) = @$_;
+		if ($user =~ /^$tellwho$/){
+			$self->say($event,"- $tellwhat");
+			$count++;
+		}
+	}
+	$self->say($event, "empty!") unless $count > 0;
+	return 0;
+}
+
+sub forgettodo {
+	my ($self, $event, $subject) = @_;
+	my $user = $event->{'from'};
+	my @keep;
+	foreach (@{$self->{'todo'}}) {
+		my ($tellwho,$tellwhat) = @$_;
+		if ($user =~ /^$tellwho$/){
+			if ($tellwhat !~ /$subject/) {
+				my @tmp = ($tellwho, $tellwhat);
+				push(@keep,\@tmp);
+			}
+		} else {
+			my @tmp = ($tellwho, $tellwhat);
+			push(@keep,\@tmp);
+		}
+	}
+	@{$self->{'todo'}} = @keep;
+	$self->saveConfig();
+	return 0;
+}
+
+

@@ -1,0 +1,42 @@
+#just having some fun
+package BotModules;
+
+package BotModules::Laugh; # Joris Vandermeersch <jovdmeer@vub.ac.be>
+use base qw(BotModules); 
+
+
+sub Initialise {
+  my $self = shift;
+  delete $INC{"Laugh.bm"}; # Hack om Laugh te reloaden
+}
+
+sub Told {
+  my $self = shift;
+  my ($event,$message) = @_;
+  if ($message =~ /^\s*laugh\s*(at|@)?\s*(\w*)/i) {
+    my $who = $2;
+    if ($who !~ /^$/) {
+      $self->LaughAt($event,$who);
+    } else {
+      $self->say($event,"I can hardly just laugh without reason, can I?");
+    }
+  } else {
+    return $self->SUPER::Told(@_);
+  }
+  return 0;
+}
+
+sub SpottedKick {
+  my $self = shift;
+  my ($event,$channel,$who) = @_;
+  $self->LaughAt($event,$who);
+  return $self->SUPER::SpottedKick(@_); # if anyone else ever wants to code something to do with kicking, this one will be executed by default or together with the other SpottedKicks, i dunno
+}
+
+sub LaughAt {
+  my $self = shift;
+  my ($event,$who) = @_;
+  $self->emote($event,"points and laughs at " . $who);
+  $self->say($event,"BAAAAAHAHAAHAHAHA!!!");
+  return 0;
+}

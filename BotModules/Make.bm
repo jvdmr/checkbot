@@ -1,0 +1,21 @@
+package BotModules::Make; # Joris Vandermeersch <jovdmeer@vub.ac.be>
+use base qw(BotModules);
+
+sub Told {
+	my $self = shift;
+	my ($event,$message) = @_;
+	if ($message =~ /^\s*make\s*(.*)/i) {
+		my $what = $1;
+		if ($what !~ /^$/) {
+			$what =~ s/\bme\b/§/g ;
+			$what =~ s/\byou\b/me/g ;
+			$what =~ s/§/you/g ;
+			$self->say($event,"make: *** Don't know how to make " . $what . ". Stop.");
+		} else {
+			$self->say($event,"make: *** No targets specified and no makefile found. Stop.");
+		}
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0;
+}

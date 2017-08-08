@@ -1,0 +1,80 @@
+package BotModules::CheckBier; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        '' => 'Zegt wie er zat is op IG.',
+        'bier' => 'Geef statistiekjes.',
+        'cola' => 'Geef statistiekjes.',
+    };
+}
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    if ($message =~ /^\s*((bier|cola|icetea|redbull|frituur|pizza)(\s+-[a-z](\s+-?[0-9]+)?)?).*$/osi) {
+      my $cmd = $1;
+      my $all = 1;
+      $all = 0 unless ($message =~ /all/);
+      $self->igcheck($event, $all, $cmd);
+      return 0;
+    }
+    return $self->SUPER::Told(@_);
+}
+
+sub igcheck {
+    my $self = shift;
+    my ($event, $a, $param) = @_;
+
+    my @output = `/home/check/bin/check2 $param`;
+    map { chomp } @output;
+    @output = map { expandtab($_) } @output;
+
+    if ($#output == -1) {
+        $self->say($event, "Huh? Geen output. Misschien niets gedronken??");
+        return;
+    }
+
+    if ($output[0] !~ /^count\s/) {
+        foreach my $line (@output) {
+            $self->say($event, $line);
+        }
+        return;
+    }
+
+    my $formatted = expandtab(shift @output);
+    my $lines = 1;
+    my $last_stats;
+
+    #my @colors = ("\00304", "\00305", "\00307", "\00310"); #rood
+    my @colors = ("\00308", "\00307", "\00304", "\00305"); #geel/rood
+    #my @colors = ("\00309", "\00303", "\00303", "\00307"); #groen
+
+    foreach my $line (@output) {
+        $line =~ /(.*\s+)(.*)/;
+        my ($stats, $naam) = ($1, $2);
+        if ($stats eq $last_stats) {
+            $formatted .= ", $naam";
+        } else {
+            if ($lines++ == 5 && $a == 0) {
+                $formatted .= " \00314[rest snipped]";
+                last;
+            } else {
+                my $color = shift(@colors) or "";
+                $formatted .= "\n" . $color . $line;
+                $last_stats = $stats;
+            }
+        }
+    }
+    map { $self->say($event, $_) } split /\n/, $formatted;
+}
+
+sub expandtab {
+    my ($line) = @_;
+    while ($line =~ s/^(.*?)\t/$1.(' 'x(8-(length($1)%8)))/e) { };
+    return $line;
+}

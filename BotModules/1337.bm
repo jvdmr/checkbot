@@ -1,0 +1,25 @@
+package BotModules::1337; # Joris Vandermeersch <joris@infogroep.be>
+use base qw(BotModules);
+
+sub Told {
+  my $self = shift;
+  my ($event,$message) = @_;
+  if ($message =~ /^\s*[1l][e3]{2}[t7]\s+(.+)/i) {
+    my $what = $1;
+		$what =~ s/([a-z])/\U$1/g;
+		$what =~ s/O/0/g;
+		$what =~ s/L/1/g;
+		$what =~ s/Z/2/g;
+		$what =~ s/E/3/g;
+		$what =~ s/A/4/g;
+		$what =~ s/S/5/g;
+		$what =~ s/T/7/g;
+		$what =~ s/B/8/g;
+		$what =~ s/G/9/g;
+			$self->say($event, $what);
+  } else {
+    return $self->SUPER::Told(@_);
+  }
+  return 0;
+}
+

@@ -1,0 +1,93 @@
+package BotModules::Ping; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        '' => 'This is the module that goes *ping*.',
+        'ping' => 'Ping a host.',
+    };
+}
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    my @matches;
+    if ($message =~ /^\s*ping\s+((?:\s*[0-9a-z._-])+)\s*$/osig) {
+        my @host = split(/\s+/, $1);
+        my $results = { map { $_ => 'dunno' } @host };
+        foreach my $host (@host) {
+            $self->spawnChild($event, '/bin/ping',
+                [ '-q', '-c', '1', '-w', 2, '--', $host ],
+                'ping', [ $host, $results ]);
+        }
+    } else {
+        return $self->SUPER::Told(@_);
+    }
+    return 0; # we've dealt with it, no need to do anything else.
+}
+
+sub ChildCompleted {
+    my $self = shift;
+    my ($event, $type, $output, @data) = @_;
+
+    if ($type eq 'ping') {
+        my ($host, $results) = @data;
+        lock $results;
+        lock %$results;
+        if ($output eq '') { # no output == error message tot stderr
+            $results->{$host} = 'unknown';
+        } elsif ($output !~ ' 0% packet loss') {
+            $results->{$host} = 'down';
+        } else {
+            $results->{$host} = 'up';
+        }
+        $self->print_results($event, $results) if ($self->done($results));
+    } else {
+        return $self->SUPER::ChildCompleted(@_);
+    }
+    return 0;
+}
+
+sub done {
+    my $self = shift;
+    my ($results) = @_;
+
+    foreach my $host (keys %{$results}) {
+        return 0 if ($results->{$host} eq 'dunno');
+    }
+    return 1;
+}
+
+sub print_results {
+    my $self = shift;
+    my ($event, $results) = @_;
+    my $out = "";
+
+    my $select = sub {
+            my ($x) = @_;
+            grep { $results->{$_} eq $x } keys %$results;
+        };
+    
+    my $join2 = sub {
+            my ($first, $last, @x) = @_;
+            join($first, @x[0..$#x-1]) . ($#x>0 ? $last : '') . $x[$#x];
+        };
+    
+    my @ups = sort &$select('up');
+    my @downs = sort &$select('down');
+    my @unknowns = sort &$select('unknown');
+    
+    my $up = &$join2(", ", " and ", @ups);
+    $up .= ($#ups ? " are" : " is") . " up" if $up;
+    my $down = &$join2(", ", " and ", @downs);
+    $down .= ($#downs ? " seem" : " seems") . " down" if $down;
+    my $unknown = &$join2(", ", " and ", @unknowns);
+    $unknown .= " not found" if $unknown;
+
+    my $answer = join('; ', grep { $_ } $up, $down, $unknown) . ".";
+    $self->say($event, $answer);
+}

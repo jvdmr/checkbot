@@ -1,0 +1,15 @@
+package BotModules::Pom;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Told {
+  my $self = shift;
+  my ($event, $message) = @_;
+  if ($message =~ /^\s*moon\s*$/osi) {
+    $self->say($event, `/usr/games/pom`);
+  } else {
+    return $self->SUPER::Told(@_);
+  }
+  return 0;
+}

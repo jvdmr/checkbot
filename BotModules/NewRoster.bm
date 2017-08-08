@@ -1,0 +1,47 @@
+package BotModules::NewRoster; #Joris Vandermeersch <joris.vdmr@gmail.com>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+2;
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        'uurrooster' => 'Ga naar http://uurrooster.phoenix.rave.org/ en maak een account
+met je IRC nick als naam. Hang er de nodige vakken aan en vraag check
+vervolgens om je lessenrooster',
+    };
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	my $nick = $event->{'from'};
+	if ($message =~ /\bles|uurrooster\b/) {
+		if ($message =~ /\b(ma|di|wo|do|vr|za|zo)\b/) {
+			my $day = $1;
+			if ($message =~ /\bweek\b\s*([0-9]+)/) {
+				my $week = $1;
+				$self->getURI($event, "http://uurrooster.phoenix.rave.org/$nick/$week/$day", $nick);
+			} else {
+				$self->getURI($event, "http://uurrooster.phoenix.rave.org/$nick/day/$day", $nick);
+			}
+		} elsif ($message =~ /\bvandaag\b/) {
+			$self->getURI($event, "http://uurrooster.phoenix.rave.org/$nick/today", $nick);
+		} else {
+			$self->getURI($event, "http://uurrooster.phoenix.rave.org/$nick/now", $nick);
+		}
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0;
+}
+
+sub GotURI {
+  my $self = shift;
+  my ($event, $url, $html, $who) = @_;
+
+	$self->say($event, $html);
+  return $self->SUPER::Told(@_);
+}
+

@@ -1,0 +1,53 @@
+package BotModules::Tetrinet; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub RegisterConfig {
+  my $self = shift;
+  $self->SUPER::RegisterConfig(@_);
+  $self->registerVariables(
+    # [name, save?, settable?, default]
+      ['announced', 0, 0, 0],
+      );
+}
+
+sub Schedule {
+  my $self = shift;
+  my ($event) = @_;
+  $self->schedule($event, 15 * 60, -1, 'tetrinet');
+  $self->SUPER::Schedule(@_);
+}
+
+sub Scheduled {
+  my $self = shift;
+  my ($event, $type, @data) = @_;
+  if ($type eq 'tetrinet') {
+    $self->BotModules::spawnChild($event, 'check_tetrinet', [], 'tetrinet', []);
+  } else {
+    $self->SUPER::Scheduled(@_);
+  }
+}
+
+sub ChildCompleted {
+  my $self = shift;
+  my ($event, $type, $output, @data) = @_;
+  
+  if ($type ne 'tetrinet') {
+    $self->SUPER::ChildCompleted(@_);
+    return;
+  }
+  
+  my @nicks = sort split(/\n/, $output);
+  if (@nicks < 2) {
+    $self->{'announced'} = 0;
+    return;
+  }
+  
+  unless ($self->{'announced'}) {
+    my $msg = ' en ' . pop(@nicks);
+    $msg = join(', ', @nicks) . $msg;
+    $self->announce($event, "hey, $msg zijn aan 't tetrinetten")
+  }
+  $self->{'announced'} = 1;
+}

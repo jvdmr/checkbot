@@ -1,0 +1,177 @@
+################################
+# Tell Module                  #
+################################
+
+package BotModules::Tell; # Joris Vandermeersch <jovdmeer@vub.ac.be>
+use vars qw(@ISA);
+use Data::Dumper;
+@ISA = qw(BotModules);
+2;
+
+my $delimiter = "}{{^½¼#|";
+
+# RegisterConfig - Called when initialised, should call registerVariables
+sub RegisterConfig {
+	my $self = shift;
+	$self->SUPER::RegisterConfig(@_);
+	$self->registerVariables(
+		# [ name, save?, settable? ]
+		['recorded', 0, 1, {}],
+	);
+}
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'tell' => 'make the bot tell someone something. if that someone isn\'t in the channel, tell him when he returns. "tell <nick> <message>"',
+		'tell ... instead of ...' => 'give message to someone else. "tell <newnick> instead of <oldnick>"',
+		'nvm' => 'forget about telling someone something. "nvm <nick> [and <subject>]"',
+	};
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^tell\s+me\s+everything$/) {
+		$self->debug(Dumper($self->{'recorded'}));
+	} elsif ($message =~ /^tell\s+(\S+)\s+instead of\s+(\S+)\s*$/) {
+		my $tellwhoelse = $1;
+		my $tellwho = $2;
+		$result = changetotell($self, $event, $tellwho, $tellwhoelse);
+		if ($result == 0) {
+			$self->say($event, "Ok, I'll tell $tellwhoelse then.");
+		} elsif ($result == 1) {
+			$self->say($event, "No, I really think I should tell $tellwho about this...");
+		} else {
+			$self->say($event, "Sorry, I've no idea what you're talking about...");
+		}
+	} elsif ($message =~ /^tell\s+\/([^\/]+)\/\s+(.*)$/){
+		my $tellwho = $1;
+		my $tellwhat = $2;
+		my $result = remembertotell($self, $event, $tellwho, $tellwhat);
+		if ($result == 0) {
+			$self->say($event, "Ok, next time I see $tellwho I'll tell him/her.");
+		} else {
+			$self->say($event, "I'm sorry, my memory seems to fail me.");
+		}
+	} elsif ($message =~ /^tell\s+(\S+)\s+(.*)$/){
+		my $tellwho = $1;
+		my $tellwhat = $2;
+		my $result = remembertotell($self, $event, $tellwho, $tellwhat);
+		if ($result == 0) {
+			$self->say($event, "Ok, next time I see $tellwho I'll tell him/her.");
+		} else {
+			$self->say($event, "I'm sorry, my memory seems to fail me.");
+		}
+	} elsif ($message =~ /^(?:nvm|never\s?mind)\s+(\S+)(?:\s+and\s+(.*\S))?\s*$/){
+		my $tellwho = $1;
+		my $tellwhat = $2;
+		my $result = forgottotell($self, $event, $tellwho, $tellwhat);
+		if ($result == 0) {
+			$self->say($event, "Ok, won't say a word.");
+		} elsif ($result == 1) {
+			$self->say($event, "Sorry, I just can't get it out of my head!");
+		} else {
+			$self->say($event, "I've no idea what you're talking about, I wasn't gonna tell $tellwho anything!");
+		}
+	} else {
+		tellthem($self,$event);
+		return 1; # don't block other modules...
+	}
+	tellthem($self,$event);
+	return 0;
+}
+
+sub Heard {
+	my $self = shift;
+	my ($event, $message) = @_;
+	return tellthem($self,$event);
+}
+
+sub SpottedJoin {
+	my $self = shift;
+	my ($event, $channel, $who) = @_;
+	return tellthem($self,$event);
+}
+
+sub SpottedNickChange {
+	my $self = shift;
+	my ($event, $from, $to) = @_;
+	changetotell($self, $event, $from, $to);
+	return 1;
+}
+
+sub remembertotell {
+	my ($self, $event, $who, $what) = @_;
+#  $self->debug("memorizing :: $event->{'channel'} # $event->{'from'} -> $who : $what");
+	my %tmp = (
+		'what' => $what,
+	 	'channel' => $event->{'channel'},
+	 	'from' => $event->{'from'}
+	);
+	$self->{'recorded'}{$who} = [] unless (exists $self->{'recorded'}{$who});
+	if (push(@{$self->{'recorded'}{$who}}, \%tmp)) {
+		$self->saveConfig();
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
+sub changetotell {
+	my ($self, $event, $who, $whoelse) = @_;
+	if (exists $self->{'recorded'}{$who}) {
+		$self->{'recorded'}{$whoelse} = $self->{'recorded'}{$who};
+		delete $self->{'recorded'}{$who};
+		$self->saveConfig();
+		return 0;
+	}
+	return 2;
+}
+
+sub forgottotell {
+	my ($self, $event, $who, $what) = @_;
+	if (exists $self->{'recorded'}{$who}) {
+		my $i = 0;
+		$i++ until $self->{'recorded'}{$who}[$i]{'what'} =~ /$what/;
+		splice($self->{'recorded'}{$who}, $i, 1);
+		delete $self->{'recorded'}{$who} unless @{$self->{'recorded'}{$who}};
+		$self->saveConfig();
+		return 0;
+	}
+	$self->saveConfig();
+	return 0;
+}
+
+sub tellthem {
+	my ($self,$event,$to)=@_;
+	my $channel = $event->{'channel'};
+	my $who = $event->{'from'};
+	$who = $to if defined $to;
+	if (exists $self->{'recorded'}{$who}) {
+		$self->debug("exists!");
+		my $i = 0;
+		$self->debug();
+		foreach (@{$self->{'recorded'}{$who}}) {
+			my $h = $_;
+			next unless $h->{'channel'} =~ /$channel/;
+			my $tellwho = $who;
+			my $tellwhat = $h->{'what'};
+			my $tellchannel = $h->{'channel'};
+			my $tellfrom = $h->{'from'};
+#      $self->debug("$tellchannel # $tellfrom -> $tellwho : $tellwhat");
+			$self->say($event,"$who: $tellfrom asked me to tell you: $tellwhat");
+			splice($self->{'recorded'}{$who}, $i, 1);
+			if (@{$self->{'recorded'}{$who}}) {
+				tellthem($self, $event, $to) unless $i >= @{$self->{'recorded'}{$who}};
+			} else {
+				delete $self->{'recorded'}{$who} 
+			}
+			$i++;
+		}
+	}
+	$self->saveConfig();
+	return 1; # don't block other modules...
+}
+

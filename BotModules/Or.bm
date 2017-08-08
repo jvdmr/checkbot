@@ -1,0 +1,38 @@
+package BotModules::Or;
+use IO::Socket;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'OPTION1 or OPTION2' => 'tells you which to choose'
+	};
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	return 8 unless $event->{level} >= 8; # lower priority than infobot
+	if ($message =~ /\s+(or|of)\s+/) {
+		return choose($self,$event,$message);#."\n".choose($self,$event,$message)."\n".choose($self,$event,$message);
+	}
+	return $self->SUPER::Told(@_);
+}
+
+sub choose {
+	my $self = shift;
+	my ($event, $message, @result) = @_;
+	@result = () unless defined(@result);
+	if ($message =~ /^(.*?)(?:\s+(?:or|of)|,)\s+(.*?)\s*\??$/i) {
+		my $text1 = $1;
+		my $text2 = $2;
+		push(@result, $text1);
+		return choose($self, $event, $text2, @result);
+	}
+	push(@result, $message);
+	my $i = int(rand(@result));
+	$self->say($event, $result[$i]);
+	return 0;
+}

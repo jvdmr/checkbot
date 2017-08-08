@@ -1,0 +1,339 @@
+# vim:tw=9999:et:ts=2
+package BotModules::Feeds; # joris Vandermeersch <joris@infogroep.be>
+use vars qw(@ISA);
+use HTML::Parser;
+use Encode;
+@ISA = qw(BotModules);
+2;
+
+# RegisterConfig - Called when initialised, should call registerVariables
+sub RegisterConfig {
+  my $self = shift;
+  $self->SUPER::RegisterConfig(@_);
+  $self->registerVariables(
+    # [ name, save?, settable? ]
+    ['siteurls', 1, 1, {}],
+    ['siteattrs', 1, 1, {}],
+    ['sitelast', 1, 1, {}],
+    ['activesites', 1, 1, {}],
+  );
+}
+
+sub Help {
+  my ($self, $event) = @_;
+  return {
+    '' => 'keeps track of sites without rss feeds',
+    'register' => "Registers a website in the database.\n"
+     . "Syntax: register <feed> <url> <name> <attributes>\n"
+     . "The feed and name may not contain spaces, while the feed can also no contain any colons.\n"
+     . "If the feed-name combination is already used, the previous site under that feed and name is overwritten. \n"
+     . "Attributes have an own syntax: 'url <src|href> [tag:key=\"value\",key=\"value\">]tag:key=\"value\",key=\"value\"\n"
+     . "  'url' specifies that the expected result is an url (currently the only option, future work: quotes, ...)\n"
+     . "  either 'src' or 'href', depending on which one you want to find in the specified tag\n"
+     . "  tag is a valid html tag name, specifying that the expected result is found in this kind of tag. Linking tags with > implies these tags are nested this way\n"
+     . "  several 'key=\"value\"' pairs, seperated by commas, specifying that the tag should have these attributes. The double quotes are required.\n"
+     . "Examples:\n"
+     . " register comics http://choppingblock.keenspot.com/ ChoppingBlock url src img:title=\"comic\"\n"
+     . " register comics http://www.dominic-deegan.com/ DominicDeegan url src div:class=\"comic\">img",
+    'latest' => "Returns the url to the latest found item of specified site. Feed is not required unless several sites exist in different feeds under the same name.\n"
+     . "Syntax: latest [<feed>] <name>\n"
+     . "Example: latest ChoppingBlock",
+    'unregister' => "Removes the website from the database.\n"
+     . "Syntax: unregister [<feed>] <name>\n"
+     . "Example: unregister ChoppingBlock",
+    'deactivate' => "Stop fetching the website, but keep it the database.\n"
+     . "Syntax: deactivate [<feed>] <name>\n"
+     . "Example: deactivate ChoppingBlock",
+    'activate' => "Start fetching a website already present in the database.\n"
+     . "Syntax: activate [<feed>] <name>\n"
+     . "Example: activate ChoppingBlock",
+    'sites' => "Lists all sites registered in specified feed, or in all feeds if no feed is specified.\n"
+     . "Syntax: sites [<feed>]",
+  };
+}
+
+sub registerSite {
+  my ($self, $event, $feed, $url, $name, $attrs) = @_;
+  return "attributes parse error!" unless $self->parseAttributes($attrs);
+  my $siteexisted = $self->{'siteurls'}{"$feed:$name"};
+  $self->{'siteurls'}{"$feed:$name"} = $url;
+  $self->{'siteattrs'}{"$feed:$name"} = $attrs;
+#  $self->debug("scheduling scraper for $feed:$name") unless $siteexisted;
+  $self->schedule($event, 60*15, -1, 'Feeds', "$feed:$name") unless $siteexisted;
+  $self->parseSite($event, "$feed:$name", 1); # first update
+  $self->saveConfig();
+  return "$name registered in $feed";
+}
+
+sub unregisterSite {
+  my ($self, $event, $feed, $name) = @_;
+  delete $self->{'siteurls'}{"$feed:$name"};
+  delete $self->{'siteattrs'}{"$feed:$name"};
+  $self->saveConfig();
+  return "$name unregistered from $feed";
+}
+
+sub deactivateSite {
+  my ($self, $event, $feed, $name) = @_;
+  delete $self->{'activesites'}{"$feed:$name"};
+  $self->saveConfig();
+  return "$name deactivated on $feed";
+}
+
+sub activateSite {
+  my ($self, $event, $feed, $name) = @_;
+  $self->{'activesites'}{"$feed:$name"} = 1;
+  $self->saveConfig();
+  return "$name activated on $feed";
+}
+
+sub listSites {
+  my ($self, $feed) = @_;
+  my $answer = "";
+  if ($feed eq 'all'){
+    foreach my $name (sort keys %{$self->{'siteurls'}}) {
+      $answer .= "$name => $self->{'siteurls'}{$name} > $self->{'siteattrs'}{$name} (" . ($self->{'activesites'}{$name} ? "Active" : "Deactivated") . ")\n";
+    }
+  } else {
+    foreach my $fname (sort keys %{$self->{'siteurls'}}) {
+      $fname =~ /^([^   :]+):(.*)$/;
+      my ($sfeed, $name) = ($1, $2);
+      if ($sfeed eq $feed){
+        $answer .= "$name => $self->{'siteurls'}{$fname} > $self->{'siteattrs'}{$fname} (" . ($self->{'activesites'}{$fname} ? "Active" : "Deactivated") . ")\n";
+      }
+    }
+  }
+  return $answer eq "" ? "no sited registered" . ($feed eq 'all' ? "" : "in $feed") . "!" : $answer;
+}
+
+sub getSiteDetails {
+  my ($self, $fname) = @_;
+  my $url = $self->{'siteurls'}{$fname};
+  my $attr = $self->{'siteattrs'}{$fname};
+  $fname =~ /^([^   :]+):(.*)$/;
+  my ($feed, $name) = ($1, $2);
+  return ($feed, $name, $url, $attr);
+}
+
+sub findFeed {
+  my ($self, $name) = @_;
+  my $fname = "";
+  foreach my $n (sort keys %{$self->{'siteurls'}}) {
+    $fname = $n if $n =~ /:$name$/;
+  }
+  $fname =~ /^([^  :]*):/;
+  return $1;
+}
+
+sub parseSite {
+  my ($self, $event, $fname, $firsttime) = @_;
+  $self->getURI($event, $self->{'siteurls'}{$fname}, $fname, $firsttime);
+}
+
+sub parseAttributes {
+  my ($self, $attr) = @_;
+  my %attributes = ();
+#  my @data = split(/\s+/, $attr);
+  $attr =~ m/^(url)\s+(src|href)\s+(.*)$/;
+  my @data = ($1,$2,$3);
+  foreach my $part (@data) {
+    if ($part eq 'url') {
+      $attributes{url} = 1;
+    } elsif ($part =~ m/^(?:src|href)$/) {
+      $attributes{value} = $part;
+    } elsif ($part =~ /^(?:[a-z]+(?::(?:[a-z]+="[^"]*",)*[a-z]+="[^"]*")?>)*[a-z]+(?::(?:[a-z]+="[^"]*",)*[a-z]+="[^"]*")?/) {
+      my @tags = split(/>/, $part);
+      foreach my $tagstr (@tags) {
+        my %tag = ();
+        my ($tn, $kvstr) = split(':', $tagstr);
+#        $self->debug("looking for tag '$tn'");
+        $tag{tagname} = $tn;# if ($tn =~ /^(?:img)$/);
+        my @kvs = split(',', $kvstr);
+        foreach my $kv (@kvs) {
+          if ($kv =~ /^([a-z]*)="([^"]*)"$/) {
+#            $self->debug("attr: $kv");
+            my ($k, $v) = ($1, $2);
+            $v =~ s/["']//g;
+            $tag{$k} = $v;
+          } else {
+#            $self->debug("PARSE ERROR");
+            return 0; # parse error
+          }
+        }
+        push(@{$attributes{stack}}, \%tag);
+      }
+    } else {
+#      $self->debug("parse error: $part");
+      return 0;
+    }
+  }
+  return %attributes;
+}
+
+sub GotURI {
+  my ($self, $event, $url, $html, $fname, $firsttime) = @_;
+  my ($feed, $name, $url, $attr) = $self->getSiteDetails($fname);
+  my %attributes = $self->parseAttributes($attr);
+  our $result = "";
+  our @parseStack = ();
+  our @poppedParseStack = ();
+  our @poppedStack = ();
+  our $tag = pop(@{$attributes{stack}});
+
+  # parsing html
+
+  my $parser = HTML::Parser->new(api_version => 3,
+    start_h => [
+      sub {
+        my ($tagname, $attr) = @_;
+        $attr->{tagname} = $tagname;
+#        $self->debug("opening $tagname" . ($html =~ /<\/$tagname\b/ ? "" : " which doesn't close"));
+
+        if ($attr->{tagname} eq $tag->{tagname}) {
+#          $self->debug("found tag $attr->{tagname}!");
+          my $attrmatch = 1;
+          foreach my $akey (keys %$tag) {
+            if ($akey eq "tagname" or "$attr->{$akey}" eq "$tag->{$akey}") {
+#              $self->debug("it has $akey='$attr->{$akey}'!") unless $akey eq "tagname";
+            } else {
+#              $self->debug("damn, its $akey is '$attr->{$akey}' instead of '$tag->{$akey}'...");
+              $attrmatch = 0;
+            }
+#            $attrmatch = 0 unless ($akey eq "tag" or "$attr->{$akey}" eq "$tag->{$akey}");
+          }
+          while ($attrmatch and scalar @{$attributes{stack}} > 0) {
+            push(@poppedStack, $tag);
+#            $self->debug("looking for enclosing tag $tag->{tagname}...");
+            push(@poppedParseStack, $attr);
+            $tag = pop(@{$attributes{stack}});
+            $attr = pop(@parseStack);
+            if ($attr->{tagname} eq $tag->{tagname}) {
+#              $self->debug("found enclosing tag $attr->{tagname}!");
+              foreach my $akey (keys %$tag) {
+                if ($akey eq "tagname" or "$attr->{$akey}" eq "$tag->{$akey}") {
+#                  $self->debug("it has $akey='$attr->{$akey}'!") unless $akey eq "tagname";
+                } else {
+#                  $self->debug("damn, its $akey is '$attr->{$akey}' instead of '$tag->{$akey}'...");
+                  $attrmatch = 0;
+                }
+#                $attrmatch = 0 unless ($akey eq "tag" or "$attr->{$akey}" eq "$tag->{$akey}");
+              }
+            } else {
+#              $self->debug("found enclosing tag $attr->{tagname}, which is the wrong one...");
+              $attrmatch = 0;
+            }
+          }
+          while (scalar @poppedStack > 0) {
+#            $self->debug("pushing $tag->{tagname} back...");
+            push(@{$attributes{stack}}, $tag);
+            push(@parseStack, $attr);
+            $tag = pop(@poppedStack);
+            $attr = pop(@poppedParseStack);
+          }
+          $result = $attr->{$attributes{value}} if $attrmatch;
+#          $self->debug("got result '$result'") if $attrmatch;
+        }
+        push(@parseStack, $attr) if $html =~ /<\/$tagname\b/;
+      }, "tagname, attr"],
+    end_h => [
+      sub {
+        my $tagname = shift;
+        my $t = pop(@parseStack);
+#        $self->debug("closing $tagname" . ($t->{tagname} eq $tagname ? "!" : "! ...or not?"));
+        push(@parseStack, $t) unless $t->{tagname} eq $tagname;
+      }, "tagname" ]);
+  $parser->parse(decode_utf8($html));
+
+#  $self->debug("result: $result\n");
+
+  if ($result !~ /^http/ and $attributes{url}) {
+    if ($result =~ /^\/\//) {
+#      $self->debug("got //");
+      $result = "http:" . $result;
+    } elsif ($result =~ /^\//) {
+#      $self->debug("got /, url: $url");
+      $url =~ /^(https?:\/\/[^\/]*)(?:\/.*)$/;
+      my $domain = $1;
+      $result = $domain . $result;
+    } else {
+#      $self->debug("got nothing, url: $url");
+      $result = $url . ($url =~ /\/$/ ? "" : "/") . $result unless $result eq "";
+    }
+  }
+
+#  $self->debug("result: $result\n");
+
+  unless ($self->{'sitelast'}{$fname} eq $result or $result eq "") {
+    $self->{'sitelast'}{$fname} = $result;
+    open F, '>>', 'feeds/' . $feed || return;
+    print F "$feed\t$event->{'time'}\t$name\t$result\t$url\n";
+    close F;
+  }
+
+  $self->say($event, "result: $result") if $firsttime;
+}
+
+sub Schedule {
+  my ($self, $event) = @_;
+  $self->SUPER::Schedule(@_);
+  foreach my $fname (sort keys %{$self->{'siteurls'}}) {
+#    $self->debug("updating, then scheduling scraper for $fname");
+    $self->parseSite($event, $fname, 0); # first update
+    $self->schedule($event, 60*15, -1, 'Feeds', $fname);
+  }
+  return $self->SUPER::Schedule($event);
+}
+
+sub Scheduled {
+  my ($self, $event, $origin, $fname) = @_;
+  return $self->SUPER::Scheduled(@_) unless $origin eq 'Feeds';
+  $self->parseSite($event, $fname, 0) if $self->{'activesites'}{$fname};
+}
+
+sub Told {
+  my ($self, $event, $message) = @_;
+  $message =~ s/^\s+//;
+  $message =~ s/\s+$//;
+  if ($message =~ /^register\s+([^   :]+)\s+(https?:\/\/\S*)\s+(\S+)\s+(.*)$/) {
+    $self->say($event, $self->registerSite($event, $1, $2, $3, $4));
+  } elsif ($message =~ /^activate\s+([^  :]+)\s+(\S+)$/) {
+    my $name = $2;
+    my $feed = $1;
+    $self->say($event, $self->activateSite($event, $feed, $name));
+  } elsif ($message =~ /^activate\s+(\S+)$/) {
+    my $name = $1;
+    my $feed = $self->findFeed($name);
+    $self->say($event, $self->activateSite($event, $feed, $name));
+  } elsif ($message =~ /^deactivate\s+([^  :]+)\s+(\S+)$/) {
+    my $name = $2;
+    my $feed = $1;
+    $self->say($event, $self->deactivateSite($event, $feed, $name));
+  } elsif ($message =~ /^deactivate\s+(\S+)$/) {
+    my $name = $1;
+    my $feed = $self->findFeed($name);
+    $self->say($event, $self->deactivateSite($event, $feed, $name));
+  } elsif ($message =~ /^unregister\s+([^  :]+)\s+(\S+)$/) {
+    my $name = $2;
+    my $feed = $1;
+    $self->say($event, $self->unregisterSite($event, $feed, $name));
+  } elsif ($message =~ /^unregister\s+(\S+)$/) {
+    my $name = $1;
+    my $feed = $self->findFeed($name);
+    $self->say($event, $self->unregisterSite($event, $feed, $name));
+  } elsif ($message =~ /^latest\s+([^  :]+)\s+(\S+)$/) {
+    my $result = $self->{'sitelast'}{"$1:$2"};
+    $self->say($event, $result eq "" ? "nothing found :(" : $result);
+  } elsif ($message =~ /^latest\s+(\S+)$/) {
+    my $name = $1;
+    my $feed = $self->findFeed($name);
+    my $result = $self->{'sitelast'}{"$feed:$name"};
+    $self->say($event, $result eq "" ? "nothing found :(" : $result);
+  } elsif ($message =~ /^sites\s+(\S+)$/) {
+    $self->say($event, $self->listSites($1));
+  } elsif ($message =~ /^sites$/) {
+    $self->say($event, $self->listSites('all'));
+  } else {
+    return $self->SUPER::Told(@_);
+  }
+  return 0;
+}

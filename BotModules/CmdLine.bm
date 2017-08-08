@@ -1,0 +1,48 @@
+package BotModules::CmdLine;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'' => 'zorgt voor een Commandline interface voor check',
+	};
+}
+
+sub RegisterConfig {
+	my $self = shift;
+	$self->SUPER::RegisterConfig(@_);
+	$self->registerVariables(
+		# [ name, save?, settable? ]
+		[ 'interval', 0, 0, 10 ],
+	);
+}
+
+sub Schedule {
+	my $self = shift;
+	my ($event) = @_;
+	$self->schedule($event, $self->{'interval'}, -1, 'checkCMD');
+	$self->SUPER::Schedule($event);
+}
+
+sub Scheduled {
+	my $self = shift;
+	my ($event, @data) = @_;
+	if ($data[0] eq 'checkCMD') {
+		open (CMDFILE, "/home/check/cmdfile");
+		while (<CMDFILE>) {
+			my ($line) = $_ ;
+			chomp $line ;
+			$line =~ /^(#\w+)\s+(.*)$/ ;
+			local $event->{'target'} = $1 ;
+			$self->say($event, $2) ;
+		}
+		close (CMDFILE);
+		open (CMDFILE, ">/home/check/cmdfile");
+		close (CMDFILE);
+	} else {
+		$self->SUPER::Scheduled($event, @data);
+	}
+}
+

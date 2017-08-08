@@ -1,0 +1,224 @@
+package BotModules::IGTeve; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'' => 'Waarschuwt wanneer interessante dingen op TV beginnen.',
+		'add' => '(tv) Let op een TV programma',
+		'remove' => '(tv) Haal een TV programma uit de lijst',
+		'vandaag' => '(tv) Wat is er vandaag op TV?',
+		'morgen' => '(tv) Wat is er morgen op TV?',
+		'straks' => '(tv) Wat is er straks op TV?'
+	};
+}
+
+sub RegisterConfig {
+	my $self = shift;
+	$self->SUPER::RegisterConfig(@_);
+	$self->registerVariables(
+		# [ name, save?, settable? ]
+		[ 'shows',       1, 1, [] ],
+		[ 'interval',    1, 1, 120 ],
+		[ 'listings',    0, 0, [] ],
+		[ 'last-day',    0, 0, (int(time / (60 * 60 * 24)) - 1) ],
+		[ 'announce-in', 1, 1, [] ],
+	);
+	$self->load_new_listings();
+}
+
+sub Schedule {
+	my $self = shift;
+	my ($event) = @_;
+	$self->schedule($event, \$self->{'interval'}, -1, 'checkTV');
+	$self->SUPER::Schedule($event);
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^\s*tv[-!:,;.\s]+add[-!:,;.\s]+(...+)\s*$/osi) {
+		my $show = $1;
+		return if $show !~ /\w/;
+		$show =~ s/\s+/ /; $show =~ s/^ //; $show =~ s/ $//;
+		push(@{$self->{'shows'}}, $show);
+		$self->saveConfig();
+		$self->say($event, "$show. ok, added.");
+
+	} elsif ($message =~ /^\s*tv[-!:,;.\s]+remove[-!:,;.\s]+(...+)\s*$/osi or
+		$message =~ /^\s*tv[-!:,;.\s]+forget[-!:,;.\s]+(...+)\s*$/osi) {
+		my $show = $1;
+		return if $show !~ /\w/;
+		$show =~ s/\s+/ /; $show =~ s/^ //; $show =~ s/ $//;
+		my $count = scalar @{$self->{'shows'}};
+		$self->{'shows'} = [ grep { $_ ne $show } @{$self->{'shows'}} ];
+		my $count -= scalar @{$self->{'shows'}};
+		if ($count) {
+			$self->say($event, "ok, $show removed");
+		} else {
+			$self->say($event, "nog nooit van gehoord");
+		}
+		$self->saveConfig();
+
+	} elsif ($message =~ /^\s*tv[-!:,;.\s]+vandaag[-!:,;.\s]*$/osi) {
+		my $limit = (int(time() / (24 * 3600)) + 1.3) * (24 * 3600);
+		$self->list($event, time, $limit);
+
+	} elsif ($message =~ /^\s*tv[-!:,;.\s]+morgen[-!:,;.\s]*$/osi) {
+		my $limit = (int(time() / (24 * 3600)) + 1.3) * (24 * 3600);
+		$self->list($event, $limit, $limit + 24 * 3600);
+
+	} elsif ($message =~ /^\s*tv[-!:,;.\s]+straks[-!:,;.\s]*$/osi) {
+		$self->list($event, time(), time() + 2 * 3600);
+
+	} elsif ($message =~ /^\s*tv\s*$/osi) {
+		$self->say($event, "jup, workses...");
+
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0;
+}
+
+sub Scheduled {
+	my $self = shift;
+	my ($event, @data) = @_;
+	if ($data[0] eq 'checkTV') {
+		$self->load_new_listings();
+		$self->walk_shows($event);
+	} else {
+		$self->SUPER::Scheduled($event, @data);
+	}
+}
+
+sub is_good {
+	my $self = shift;
+	my ($naam) = @_;
+	foreach my $good (@{$self->{'shows'}}) {
+		my $regexp = $good; $regexp =~ s/ /\\s*/;
+		return 1 if ($naam =~ /$regexp/i);
+	}
+	return 0;
+}       
+
+sub list {
+	my $self = shift;
+	my ($event, $from, $to) = @_;
+
+	my $count = 0;
+	foreach my $show (@{$self->{'listings'}}) {
+		my ($tijd, $naam, $zender, $blurb) = @$show;
+		if ($tijd >= $from and $tijd <= $to and $self->is_good($naam)) {
+			my @lt = localtime($tijd);
+			my $msg = sprintf "%02d:%02d \002%s\002 op \002%s\002", $lt[2], $lt[1], $naam, $zender;
+			$blurb = $self->shorten($blurb);
+			$msg .= ' ("' . $blurb . '")' if ($blurb);
+			$self->say($event, $msg);
+			$count++;
+		}
+	}
+	unless ($count) {
+		$self->say($event, "Sorry, niets dat interessant lijkt");
+	}
+}
+
+sub walk_shows {
+	my $self = shift;
+	my ($event) = @_;
+	my $begin = time;
+	my $end = time + $self->{'interval'};
+	my @future;
+
+	foreach my $show (@{$self->{'listings'}}) {
+		if ($show->[0] < $begin) {
+			next;
+		} elsif ($show->[0] > $end) {
+			push @future, $show;
+		} else {
+			$self->announce($event, @$show) if $self->is_good($show->[1]);
+		}
+	}
+	$self->{'listings'} = [ @future ];
+}
+
+sub announce {
+	my $self = shift;
+	my ($event, $tijd, $naam, $zender, $blurb) = @_;
+	$self->debug("Yeah! $naam");
+	my $msg = "speelt tvblad: \002$naam\002 op \002$zender\002";
+	$blurb = $self->shorten($blurb);
+	$msg .= " (\"$blurb\")" if ($blurb);
+	foreach my $channel (@{$self->{'announce-in'}}) {
+		local $event->{'target'} = $channel;
+		$self->emote($event, $msg);
+	}
+}
+
+sub shorten {
+	my $self = shift;
+	local ($_) = @_;
+	s/ ?Met .*?\.//;
+	s/ ?M\.m\.v\. .*?\.//;
+	s/ ?Presentatie: .*?\.//;
+	s/.*Vandaag: //;
+	s/.*Afl\. //;
+	s/.* \.\. //;
+	s/.*\.\.\. //;
+
+	#probeer een episode-titel te detecteren
+	#gooi al de rest weg als die er is
+	s/^((?:[A-Z0-9]\S*\s+)+[A-Z0-9]\S*)\..*/$1/;
+
+	#remove excess spaces
+	s/\s+/ /; s/^ //; s/ $//;
+	s/\.*$//;
+
+	#kort nog-steeds-te-lange namen in, maar breek niet af
+	#in het midden van een woord
+	s/^(.{0,125}\S)\s.*/$1.../ if length > 122;
+
+	return $_;
+}
+
+####
+#### INPUT
+####
+
+sub file_for_day {
+	my $self = shift;
+	my ($day) = @_;
+	return "$ENV{HOME}/tv/$day";
+}
+
+sub load_new_listings {
+	my $self = shift;
+	my $day = $self->{'last-day'} + 1;
+	$self->debug("Looking for listings for $day and following");
+	while (-r $self->file_for_day($day)) {
+		$self->debug("loading ". $self->file_for_day($day));
+		$self->read_file($self->file_for_day($day));
+		$self->{'last-day'} = $day;
+		$day++;
+	}
+}
+
+sub read_file {
+	my $self = shift;
+	my ($file) = @_;
+	open TVIN, "<", $file;
+	while (<TVIN>) {
+		chomp;
+		push @{$self->{'listings'}}, [ split /\t/ ];
+	}
+	$self->{'listings'} = [ sort { $a->[0] <=> $b->[0] } @{$self->{'listings'}} ];
+	close TVIN;
+}
+
+sub remove_old_listings {
+	my $self = shift;
+	my $now = time;
+	$self->{'listings'} = grep { $_->[0] < $now } $self->{'listings'};
+}

@@ -1,0 +1,147 @@
+# vim:tw=9999
+package BotModules;
+
+package BotModules::Verjaar;
+use base qw(BotModules);
+1;
+
+use Time::Local;
+
+our %months = (
+jan => 0,
+feb => 1,
+mar => 2,
+maa => 2,
+apr => 3,
+mei => 4,
+jun => 5,
+jul => 6,
+aug => 7,
+sep => 8,
+oct => 9,
+nov => 10,
+dec => 11);
+
+sub RegisterConfig {
+	my $self = shift;
+	$self->SUPER::RegisterConfig(@_);
+	$self->registerVariables(
+		# [ name, save?, settable? ]
+		['bdays', 1, 1, {}], # nick => epoch timestamp
+	);
+}
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'bday' => 'Lists birthdays.',
+		'my bday is <day> <month> [year]' => 'Register your own birthday',
+	};
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^\s*(?:birth-?days?|b-?da[yg]|verja+rdag(?:en)?)/i) {
+		$self->sayBdays($event);
+	} elsif ($message =~ /(?:my b(?:irth)-?day|(?:ik|mijn) (?:(?:verjaar|geboorte)(?:dag)?|ben))(?: is)? (?:vandaag|today)(?: jarig)?/) {
+		$self->registerBday($event, 1);
+	} elsif ($message =~ /^(\S+) (?:is|verjaart) vandaag(?: jarig)?/) {
+		$self->registerBday($event, 1, $1);
+	} elsif ($message =~ /ik (?:verjaar|ben (?:geboren|jarig))(?: op)?|(?:my b(?:irth)?-?day|mijn (?:verjaar|geboorte)dag) is/) {
+		return $self->parseDateAndRegisterBday($event, $message);
+	} elsif ($message =~ /^(\S+)(?: (?:verjaart|is (?:geboren|jarig))(?: op)?|(?:'s b(?:irth)?-?day|(?:zijn|haar) (?:verjaar|geboorte)dag) is)/) {
+		my $who = $1;
+		return $self->parseDateAndRegisterBday($event, $message, $who);
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0;
+}
+
+sub parseDateAndRegisterBday {
+	my ($self, $event, $message, $who) = @_;
+	$message =~ /([0-9]{1,2})[-.\/ ]+([0-9]{1,2}|(?:jan|feb|ma[ar]|apr|m(?:ay|ei)|jun|jul|aug|sep|o[kc]t|nov|dec))(?:r?uar[iy]|rt|ch|il|[eiy]|ust(?:us)?|(?:tem|o|em)ber)?(?:[-.\/ ]+([0-9]{2,4}))?/i;
+	my $dag = $1;
+	my $maand = $2;
+	my $jaar = $3;
+	return $self->SUPER::Told(@_) unless ($dag && $maand);
+	if ($maand =~ /[a-z]/i) {
+		$maand = $months{$maand};
+	} else {
+		$maand--;
+	}
+	if ($jaar) {
+		if ($jaar < 1960) {
+			if ($jaar < 100) {
+				$jaar += 1900;
+			} else {
+				$self->say($event, "That's impossible!");
+				return 0;
+			}
+		}
+	} else {
+		$jaar = 2016; # Doesn't really matter anyway, just needs to be a valid year within the Unix epoch
+	}
+	return $self->SUPER::Told(@_) unless ($dag && $maand && $jaar);
+	$self->registerBday($event, 0, $dag, $maand, $jaar, $who);
+}
+
+sub registerBday {
+	my ($self, $event, $vandaag, $dag, $maand, $jaar, $who) = @_;
+	my $time;
+	if ($vandaag) {
+		$time = time;
+		if ($dag) {
+			$who = $dag;
+		} else {
+			$who = $event->{'from'};
+		}
+	} else {
+		$time = timelocal(0,0,0,$dag,$maand,$jaar);
+		unless ($who) {
+			$who = $event->{'from'};
+		}
+	}
+	$self->{'bdays'}->{$who} = $time;
+	$self->saveConfig();
+	if ($vandaag) {
+		$self->say($event, "Gelukkige verjaardag, $who! *smak* *smak* *smak*")
+	} else {
+		$self->say($event, "ok!");
+	}
+}
+
+sub sayBdays {
+	my ($self, $event) = @_;
+
+	my ($d,$m) = (localtime)[3,4];
+
+	my @data;
+
+	foreach my $naam (keys %{$self->{'bdays'}}) {
+		my $time = $self->{'bdays'}->{$naam};
+		my ($sec, $min, $uur, $dag,$maand,$jaar) = (localtime($time))[0,1,2,3,4,5]; 
+		$jaar += 1900;
+
+		if ($dag == $d and $maand == $m) {
+			$self->say($event, "Jeuj, $naam is jarig vandaag! *smak* *smak* *smak* Gelukkige verjaardag!")
+		} else {
+			push @data, [ $naam, int($dag), $maand ];
+		}
+	}
+
+	my @sorted_data = sort { $a->[2] <=> $b->[2] || $a->[1] <=> $b->[1] } @data;
+
+	while ($sorted_data[0] and ($sorted_data[0][2] < $m
+				or $sorted_data[0][2] == $m && $sorted_data[0][1] < $d)) {
+		push @sorted_data, shift @sorted_data;
+	}
+
+	if (@sorted_data) {
+		my @vdagen = map { $_->[2]++; "$_->[0] $_->[1]/$_->[2]" } (scalar @sorted_data < 4 ? @sorted_data : @sorted_data[0..3]);
+		local $"=", ";
+		$self->say($event, "Verjaardagen: @vdagen")
+	}
+}

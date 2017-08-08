@@ -1,0 +1,91 @@
+package BotModules::Adventure; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+use IPC::Open2;
+@ISA = qw(BotModules);
+1;
+
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+      # [ name, save?, settable? ]
+        [ 'game', 1, 1, '/home/check/bin/adventure.irc' ],
+        [ 'channel', 1, 1, '#advent' ],
+        [ 'pid', 0, 0, 0 ],
+        [ 'in', 0, 0, 0 ],
+        [ 'out', 0, 0, 0 ],
+    );
+}
+
+sub Heard {
+    my $self = shift;
+    my ($event, $message) = @_;
+    if ($event->{'channel'} == lc($self->{'channel'})
+            && $message =~ /^,adventure$/osi
+            && !$self->{'pid'}) {
+        $self->StartGame($event);
+    }
+    elsif ($event->{'channel'} == lc($self->{'channel'})
+            && $message =~ /^,(.*)$/osi
+            && $self->{'pid'}) {
+        $self->TellGame($event, $1);
+    }
+    else {
+        return $self->SUPER::Heard(@_);
+    }
+    return 0;
+}
+
+sub StartGame {
+    my $self = shift;
+    my ($event) = @_;
+    unless ($self->{'pid'}) {
+        my ($in, $out);
+        $self->{'pid'} = open2($in, $out, $self->{'game'});
+        $self->{'in'} = $in;
+        $self->{'out'} = $out;
+    }
+    unless ($self->{'pid'}) {
+        $self->say($event, 'startup failed');
+    } else {
+        $self->ReadOutput($event);
+    }
+}
+
+sub TellGame {
+    my $self = shift;
+    my ($event, $command) = @_;
+    if ($self->{'pid'}) {
+        chomp $command;
+        my $fh = $self->{'out'};
+        print $fh "$command\n";
+        $self->ReadOutput($event);
+    }
+}
+
+sub ReadOutput {
+    my $self = shift;
+    my ($event) = @_;
+    my $done = 0;
+    my $out = "";
+    my $fh = $self->{'in'};
+    while (<$fh>) {
+        chomp;
+        $done = s/\f//;
+        if (/^\s*$/) {
+            $self->say($event, $out);
+            $out = "";
+        } else {
+            $out .= " " if $out;
+            $out .= $_;
+        }
+        if ($done) {
+            $self->say($event, $out) unless $out;
+            last;
+        }
+    }
+    unless ($done) {
+        waitpid $self->{'pid'}, 0;
+        $self->{'pid'} = 0;
+    }
+}

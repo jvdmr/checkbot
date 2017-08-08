@@ -1,0 +1,170 @@
+package BotModules::Resto; #Joris Vandermeersch <jovdmeer@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+use Data::Dumper;
+use JSON::Parse 'parse_json';
+use open ':std', ':encoding(UTF-8)';
+use utf8;
+use Encode;
+
+sub RegisterConfig {
+	my $self = shift;
+	$self->SUPER::RegisterConfig(@_);
+	$self->registerVariables(
+		# [ name, save?, settable? ]
+		[ 'complain', 0, 1, {"#infogroep" => {}, "#checktest" => {}} ],
+		[ 'timeout', 0, 1, 60*60 ],
+	);
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /rest(?:o|aurant)|f(?:oo|00|OO)d/) {
+#    $self->cleanComplain($event->{'channel'});
+		my $pm = 0;
+		my $please = 0;
+		my $day = 0; # vandaag
+#    if ($message =~ /clean/) {
+#      $self->cleanComplain($event->{'channel'});
+#      return 0;
+#    }
+		if ($message =~ /pm|privmsg/) {
+			$pm = 1;
+		}
+		if ($message =~ /please|pls|aub|alstublieft|al?sjeblieft?|svp/) {
+			$please = 1;
+		}
+		if ($message =~ /morgen/) {
+			if ($message =~ /overmorgen/) {
+				$day = 2; # overmorgen
+			} else {
+				$day = 1; # morgen
+			}
+		}
+		$self->DoResto($event, $please, $pm, $day);
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0;
+}
+
+sub DoResto {
+	my $self = shift;
+	my ($event, $please, $pm, $day) = @_;
+
+	unless ($pm) {
+		if ($event->{channel}) {
+			if ($self->{complain}{$event->{channel}}{$day}) {
+				if ($please) {
+					$self->say($event, "oh, fine...");
+				} else {
+					$self->say($event, "pff leer het /lastlog commando");
+					return;
+				}
+			}
+			$self->{complain}{$event->{channel}}{$day} = 1;
+			$self->schedule($event, $self->{timeout}, 1, $event->{channel}, $day);
+		}
+	}
+
+	my $url = 'https://my.vub.ac.be/resto/json';
+	$self->getURI($event, $url, 'resto', $pm, $day);
+}
+
+sub Scheduled {
+	my $self = shift;
+	my ($event, $channel, $day) = @_;
+	$self->{complain}{$channel}{$day} = 0;
+}
+
+sub SpottedJoin {
+	my ($self, $event) = @_;
+	$self->cleanComplain($event->{'channel'});
+}
+
+sub cleanComplain {
+	my ($self, $channel) = @_;
+	$self->debug($self->{complain}{$channel});
+	if (ref($self->{complain}{$channel}) ne "HASH") {
+		$self->{complain}{$channel} = {};
+	}
+	foreach my $day (keys $self->{complain}{$channel}) {
+		$self->{complain}{$channel}{$day} = 0;
+	}
+}
+
+sub GotURI {
+	my $self = shift;
+	my ($event, $url, $json, $tag, $pm, $day) = @_;
+
+	$self->debug($json);
+	my $menu = parse_json($json);
+
+	my $msg = 'resto: ';
+	my $date = '';
+
+	my $separator = $pm ? "\n" : " // ";
+	$self->debug($pm ? "pm" : "no pm");
+	$self->debug("separator: '$separator'");
+	$self->debug("day: '$day'");
+
+	if (not defined $menu->{nodes}[$day]{node}{field_menu_etterbeek}) {
+		$msg .= 'Geen restaurant :(';
+	} else { # yesterday is history, tomorrow is a mystery, but today, there is food in de resto in etterbeek.
+		$date = "Voor $menu->{nodes}[$day]{node}{title}:";
+		my $txtmenu = $menu->{nodes}[$day]{node}{field_menu_etterbeek};
+#    $txtmenu =~ s/\x{20ac}/EUR/g; # pesky euro signs
+		$txtmenu =~ s/\x{00a0}/ /gi; # pesky non-breaking spaces
+		$txtmenu = Encode::encode('utf-8', $txtmenu);
+#    $txtmenu =~ s/[^\x00-\x7f]//g; # pesky wide characters
+		$self->debug($txtmenu);
+
+		my @arrmenu;
+		if ($txtmenu =~ /\n/) {
+			@arrmenu = split /\n/, $txtmenu;
+		} else {
+			@arrmenu = ("Menu", "$txtmenu");
+		}
+		foreach(@arrmenu) { # do some cleaning
+			s/^\s*//;
+			s/\s*$//;
+			$self->debug($_);
+		}
+
+		my %daymenu = @arrmenu; # [ key, value, key, value ] -> { key => value, key => value }
+
+		for my $key ( keys %daymenu ) {
+			$self->debug("$key => $daymenu{$key}");
+		}
+
+		# output in the order we want
+		for my $key ( 'Soep', 'Menu 1', 'Menu 2', 'Light', 'Vegetarisch', 'Pasta bar', 'Pasta' ) {
+			if ($daymenu{$key} !~ /^\s*$/) {
+				$msg .= $daymenu{$key} . $separator;
+				delete $daymenu{$key}; # delete from the menu what we've written to output
+			} 
+		}
+		# add any menu items we missed
+		for my $key ( keys %daymenu ) {
+		 	if ($daymenu{$key} && $daymenu{$key} !~ /^\s*$/) {
+				$msg .= $key . ': ' . $daymenu{$key} . $separator;
+			}
+		}
+	}
+
+	$msg =~ s#$separator$##; # remove the last separator, there's nothing more coming after.
+
+	#output
+	if ($pm) {
+		$self->directSay($event, $date) if $day > 0;
+		$self->directSay($event, $msg);
+		$self->say($event, "pm'ed");
+	} else {
+		$self->say($event, $date) if $day > 0;
+		$self->say($event, $msg);
+	}
+}
+

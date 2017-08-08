@@ -1,0 +1,21 @@
+97c97,99
+< sub Unload {
+---
+> sub unload {
+>     my $self = shift;
+>     $self->SUPER::unload(@_);
+125c127
+<     } elsif (not $self->DoFactoidCheck($event, $message, 0)) {
+---
+>     } elsif (not $self->DoFactoidCheck($event, $message, 1)) {
+135,136c137,138
+<     if (not $self->Told($event, $message, 2)) {
+<         return $self->SUPER::Baffled(@_);
+---
+>     if (not $self->DoFactoidCheck($event, $message, 2)) {
+>         return $self->SUPER::Heard(@_);
+436,437c438
+<             #$answer = @alternatives[$self->{'factoidPositions'}->{$database}->{$subject}];
+<             $answer = @alternatives[rand @alternatives];
+---
+>             $answer = @alternatives[$self->{'factoidPositions'}->{$database}->{$subject}];

@@ -1,0 +1,72 @@
+package BotModules::Botsnack; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        '' => 'Beloon de bot.',
+        'botsnack' => 'Geef de bot een lekker biertje.',
+    };
+}
+
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+
+    my @bieren = (
+        "Leffe", "Hoegaarden", "Palm", "Kriek BelleVue", "Lindemans Kriek",
+        "Lindemans Framboise", "Lindemans Faro", "Rodenbach", "Mort Subite",
+        "Grimbergen", "Jupiler", "Leffe", "Leffe", "Leffe", "Kasteelbier",
+        "Lindemans Appel", "Lindemans Appel", 
+        );
+
+    $self->registerVariables(
+      # [name, save?, settable? ]
+        [ 'bieren', 1, 1, [ @bieren ] ],
+    );
+}
+
+sub Told {
+  my $self = shift;
+  my ($event, $message) = @_;
+  if ($message =~ /^\s*botsnack\W*$/osi) {
+    my $bier = $self->KiesEenBier;
+    $self->emote($event, "drinkt tevreden een $bier");
+    return 0;
+  } elsif ($message =~ /^\s*(\w+)snack\s*$/osi) {
+    my $bier = $self->KiesEenBier;
+    $self->emote($event, "geeft $1 een $bier. \"braaf $1!\"");
+    return 0;
+  } elsif ($message =~ /^\s*snack\s*(\w+)/) {
+    my $bier = $self->KiesEenBier;
+    $self->emote($event, "geeft $1 een $bier. \"braaf $1!\"");
+    return 0;
+  } elsif ($message =~ /^\s*snack/) {
+    my $bier = $self->KiesEenBier;
+    my $who = $event->{from};
+    $self->emote($event, "geeft $who een $bier. \"braaf $who!\"");
+    return 0;
+  }
+  return $self->SUPER::Told(@_);
+}
+
+sub KiesEenBier {
+  my $self = shift;
+  my @bieren = @{$self->{'bieren'}};
+  return $bieren[int rand $#bieren];
+}
+
+sub SpottedJoin {
+  my $self = shift;
+  my ($event, $channel, $who) = @_;
+  if ($event->{'user'} =~ /student@/) {
+    if ($event->{'nick'} ne 'saar') {
+      my $bier = $self->KiesEenBier;
+      $self->sayOrEmote($event, "/me geeft $who een $bier");
+    }
+  }
+  return 1;
+}

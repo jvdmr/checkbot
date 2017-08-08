@@ -1,0 +1,41 @@
+package BotModules::Substitute;
+use vars qw(@ISA);
+use strict;
+use warnings;
+use Substitute;
+
+@ISA = qw(BotModules);
+
+sub Initialise {
+	delete @INC{"Substitute.pm"};
+	require Substitute;
+}
+
+sub Help {
+    my ($self,$event) = @_;
+    return {
+            '' => 'alias module, allows you to define aliases that will be used in Karma and other modules',
+            'alias' => 'links a nickname to a real name. Syntax: "alias nick realname" or "alias nick" to get the linked real name.',
+            'unalias' => 'unlinks the nickname from any linked name. Syntax: "unalias nick"',
+    };
+}
+
+sub Told {
+	my ($self, $event, $message) = @_;
+	if ($message =~ /^alias\s+(\S+|\([^\)]+\))(?:\s+(\S+|\([^\)]+\)))?\s*$/) {
+		my $nick = lc $1;
+		my $name = $2;
+		my $a = Substitute->alias($nick, $name);
+		$self->say($event, ($a eq $nick) ? "I know of no alias for $nick" : "$nick is aliased to $a");
+	} elsif ($message =~ /^unalias\s+(\S+|\([^\)]+\))\s*$/) {
+		my $nick = lc $1;
+		$self->say($event, Substitute->unalias($nick) ? "forgot alias for $nick" : "I know of no alias for $nick!");
+#  } elsif ($message =~ /^wie\s+is\s+([^\s?]+)\??\s*$/) {
+#    my $nick = $1;
+#    $self->say($event, "$nick is " . Substitute->unalias_debugger($nick));
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0; # dealt with it...
+}
+

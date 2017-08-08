@@ -1,0 +1,140 @@
+package BotModules;
+
+package BotModules::Perma; # Joris Vandermeersch <jovdmeer@vub.ac.be>
+use base qw(BotModules);
+use HTML::TableContentParser;
+use HTML::Entities;
+use Data::Dumper;
+use Substitute;
+
+sub Initialise {
+  my $self = shift;
+	# hack to reload used libraries when this odule reloads
+	delete @INC{"Substitute.pm"};
+	require Substitute;
+}
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        '' => 'Geeft weer wie op dat moment permanentie heeft'.
+              'voor meer informatie, vraag een dag (vb \'perma vrijdag\' of \'perma morgen\'),'.
+              '\'perma vandaag\' voor de hele dag,'.
+              'of vraag wanneer een persoon permanentie heeft (vb \'perma wanneer omega\').'.
+              '\'perma wanneer\' geeft jouw permanentie weer.',
+    };
+}
+
+sub compiled {
+	my $self = shift;
+	return join '|', map quotemeta, sort { length $b <=> length $a } Substitute->aliases();
+}
+
+sub Told {
+  my $self = shift;
+  my ($event, $message) = @_;
+	my $compiled = $self->compiled();
+  if ($message =~ /\bperma(?:nentie)?\b/) {
+    if ($message =~ /(nu|(?:eer)?gisteren|vandaag|(?:over)?morgen|(?:maan|dins|woens|donder|vrij)dag)/) {
+      $self->DoPerma($1,"debug",$event);
+    } elsif ($message =~ /ik(?:ke)?|wanneer/) {
+			my $who = Substitute->find_real(($message =~ /($compiled)/i)?$1:$event->{'from'});
+      $who =~ s/\+/\ /; # hack voor de kevins en bij uitbreiding iedereen met een naam waar een spatie in voorkomt
+      $self->DoPerma("wie",$who,$event);
+   	} elsif ($message =~ /($compiled)/i) {
+      my $who = Substitute->find_real($1);
+      $who =~ s/\+/\ /; # hack voor de kevins en bij uitbreiding iedereen met een naam waar een spatie in voorkomt
+      $self->DoPerma("wie",$who,$event);
+    } else {
+      $self->DoPerma("nu","debug",$event);
+    }
+  } else {
+    return $self->SUPER::Told(@_);
+  }
+  return 0;
+}
+
+sub DoPerma {
+  my $self = shift;
+  my ($asked, $who, $event) = @_;
+  my $url = 'http://infogroep.be/Algemeen/Openingsuren';
+  $self->getURI($event, $url, $asked, $who);
+}
+
+sub GotURI {
+  my $self = shift;
+  my ($event, $url, $html, $asked, $who) = @_;
+
+  my $page = HTML::TableContentParser->new();
+  $page->utf8_mode(1);
+  my $tables = $page->parse($html);
+
+  sub clean {
+    local ($_) = @_;
+    $_ = decode_entities($_->{data});
+    s/[^A-Za-z0-9\+\-\&<>()]/ /g; s/<[^>]*>//g; s/\s+/ /g; s/^\s//; s/\s$//;
+    return $_ ; #|| '?';
+  }
+
+  my @all = map
+    [ map { clean $_ } @{$_->{cells}}[0..5] ],
+    @{$tables->[0]{rows}};
+
+#    $self->debug(Dumper \@all);
+
+  my ($day,$hour) = (localtime)[6,2];
+  $day--;
+  if ($asked =~ /nu|vandaag/){
+    $day = 0, $asked = 'maandag' if $day > 4;
+  } elsif ($asked =~ /^morgen$/){
+    $day = 0 if ++$day > 4;
+  } elsif ($asked =~ /^overmorgen$/){
+    $day %= 5 if ($day += 2) > 4;
+  } elsif ($asked =~ /^gisteren$/){
+    $day = 4 if --$day < 0;
+  } elsif ($asked =~ /^eergisteren$/){
+    $day %= 5 if ($day -= 2) < 0;
+  } elsif ($asked =~ /^(maan|dins|woens|donder|vrij)dag$/){
+    my %days = qw(maan 0 dins 1 woens 2 donder 3 vrij 4);
+    $day = $days{$1};
+  } else {
+    $self->say($event,  "usage: check perma <nu|vandaag|weekdag>") unless ($asked =~ /wie|vandaag/);
+  }
+  $hour = 8 if ($hour < 8 || $hour > 18);
+
+  my @data;
+
+  foreach my $entry(@all) {
+    my ($time,@week) = @$entry;
+
+    if ($asked !~ /wie/) {
+      my $now = @week[$day];
+      if ($time =~ /^\s*\Q$hour/i && $asked =~ /nu/){
+        if ($now !~ /^\s*$/){
+          $self->say($event, $time . " - " . Substitute->find_alias($now));
+        } else {
+          $self->say($event, $time . " - Niemand!");
+        }
+			}
+      push @data, [ $now, $time ];
+    } else {
+      for (my $i = 0; $i < 5 ; $i++) {
+        my $now = @week[$i];
+        if ($now =~ /\Q$who/i) {
+          my %days = qw(0 Maandag 1 Dinsdag 2 Woensdag 3 Donderdag 4 Vrijdag);
+          $self->say($event,$days{$i} . " " . $time . " - " . Substitute->find_alias($now));
+        }
+      }
+    }
+  }
+  if ($asked !~ /(nu|wie)/){
+    $self->say($event, $data[0][0]);
+    for (my $i = 1; $i < 14 ; $i++) {
+      $self->say($event, $data[$i][1] . " - " . Substitute->find_alias($data[$i][0])) unless ($data[$i][0] =~ /^\s*$/);
+    }
+  }
+  return $self->SUPER::Told(@_);
+}
+
+2;

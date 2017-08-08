@@ -1,0 +1,29 @@
+package BotModules::VanDale; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    if ($message =~ /^\s*van\s?dale\s+(\S+)\s*$/) {
+        $self->spawnChild($event, "gnuvd", [ $1 ], "vandale", [ ]);
+    } else {
+        return $self->SUPER::Told(@_);
+    }
+    return 0;
+}
+
+sub ChildCompleted {
+    my $self = shift;
+    my ($event, $type, $output) = @_;
+    if ($type eq "vandale") {
+        if ($output =~ y/\n/\n/ <= 4) {
+            $self->say($event, $output);
+        } else {
+            $self->directSay($event, $output);
+        }
+    } else {
+        $self->SUPER::ChildCompleted(@_);
+    }
+}

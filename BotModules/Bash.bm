@@ -1,0 +1,376 @@
+package BotModules::Bash; #Peter De Wachter <pdewacht@vub.ac.be>
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        '' => 'Niet de shell.',
+    };
+}
+
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+      # [ name, save?, settable? ]
+        [ 'max-lines',   1, 1, 4 ],
+        [ 'cache',       0, 0, {} ],
+        [ 'lastbash',    0, 0, undef ],
+        [ 'lastqdb',     0, 0, undef ],
+        [ 'lastomgrawr', 0, 0, undef ],
+    );
+}
+
+sub Schedule {
+    my $self = shift;
+    my ($event) = @_;
+    $self->schedule($event, 60*60, -1, "bash_purge_cache");
+    return $self->SUPER::Schedule(@_);
+} 
+
+sub Scheduled {
+    my $self = shift;
+    my ($event, $msg) = @_;
+    if ($msg and $msg eq "bash_purge_cache") {
+        $self->{'cache'} = { };
+    } else {
+        return $self->SUPER::Scheduled(@_);
+    }
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^\s*bash\s+#?([0-9]+)\s*$/osi) {
+		$self->bashlookup($event, $1, 0);
+	} elsif ($message =~ /^\s*bash\s+random\s*$/osi) {
+		$self->bashlookup($event, "random1", 0);
+	} elsif ($message =~ /^\s*bash\s+random\s*([0-9]+)\s*$/osi) {
+		$event->{'piggy_bash_min_score'} = $1;
+		$self->bashlookup($event, "random1", 0);
+	} elsif ($message =~ /^\s*bash\s+upgrade\s*$/osi) {
+		if (defined $self->{'lastbash'}) {
+			$self->say($event, "Upgrading #$self->{'lastbash'}->{'number'}");
+			$self->bashupgrade($event, $self->{'lastbash'});
+			undef $self->{'lastbash'};
+		}
+	} elsif ($message =~ /^\s*bash\s+downgrade\s*$/osi) {
+		if (defined $self->{'lastbash'}) {
+			$self->say($event, "Downgrading #$self->{'lastbash'}->{'number'}");
+			$self->bashdowngrade($event, $self->{'lastbash'});
+			undef $self->{'lastbash'};
+		}
+
+	} elsif ($message =~ /^\s*qdb\s+#?([0-9]+)\s*$/osi) {
+		$self->qdblookup($event, $1, 0);
+	} elsif ($message =~ /^\s*qdb\s+random\s*$/osi) {
+		$self->qdblookup($event, "random1", 0);
+	} elsif ($message =~ /^\s*qdb\s+random\s*([0-9]+)\s*$/osi) {
+		$event->{'piggy_qdb_min_score'} = $1;
+		$self->qdblookup($event, "random1", 0);
+	} elsif ($message =~ /^\s*qdb\s+upgrade\s*$/osi) {
+		if (defined $self->{'lastqdb'}) {
+			$self->say($event, "Upgrading #$self->{'lastqdb'}->{'number'}");
+			$self->qdbupgrade($event, $self->{'lastqdb'});
+			undef $self->{'lastqdb'};
+		}
+	} elsif ($message =~ /^\s*qdb\s+downgrade\s*$/osi) {
+		if (defined $self->{'lastqdb'}) {
+			$self->say($event, "Downgrading #$self->{'lastqdb'}->{'number'}");
+			$self->qdbdowngrade($event, $self->{'lastqdb'});
+			undef $self->{'lastqdb'};
+		}
+
+	} elsif ($message =~ /^\s*omgrawr\s+#?([0-9]+)\s*$/osi) {
+		$self->omgrawrlookup($event, $1, 0);
+	} elsif ($message =~ /^\s*omgrawr\s+random\s*$/osi) {
+		$self->omgrawrlookup($event, "random1", 0);
+	} elsif ($message =~ /^\s*omgrawr\s+random\s*([0-9]+)\s*$/osi) {
+		$event->{'piggy_omgrawr_min_score'} = $1;
+		$self->omgrawrlookup($event, "random1", 0);
+	} elsif ($message =~ /^\s*omgrawr\s+upgrade\s*$/osi) {
+		if (defined $self->{'lastomgrawr'}) {
+			$self->say($event, "Upgrading #$self->{'lastomgrawr'}->{'number'}");
+			$self->omgrawrupgrade($event, $self->{'lastomgrawr'});
+			undef $self->{'lastomgrawr'};
+		}
+	} elsif ($message =~ /^\s*omgrawr\s+downgrade\s*$/osi) {
+		if (defined $self->{'lastomgrawr'}) {
+			$self->say($event, "Downgrading #$self->{'lastomgrawr'}->{'number'}");
+			$self->omgrawrdowngrade($event, $self->{'lastomgrawr'});
+			undef $self->{'lastomgrawr'};
+		}
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0;
+}
+
+sub bashlookup {
+    my $self = shift;
+    my ($event, $id, $fetched) = @_;
+    my $min = $event->{'piggy_bash_min_score'};
+
+    my $cache = ($self->{'cache'}->{$id} or []);
+    my $quote;
+
+    # try to find a quote scored higher than $min
+    foreach my $q (@$cache) {
+        if (!defined($min) or $q->{'score'} >= $min) {
+            $quote = $q;
+            last;
+        }
+    }
+
+    # if we have found none, try to fetch more
+    if (!defined($quote) and $fetched == 0) {
+        $self->getURI($event, "http://bash.org/?$id", $id, "http://bash.org/", "bash");
+        return;
+    }
+
+    # if we have fetched and still found none, just pick one
+    if (!defined($quote)) {
+        if (defined($min)) {
+            # min defined, try as high as possible
+            foreach my $q (@$cache) {
+                if (!defined($quote) or $q->{'score'} > $quote->{'score'}) {
+                    $quote = $q;
+                }
+            }
+        } else {
+            $quote = $cache->[0];
+        }
+    }
+
+    # if we still found none, give up
+    return unless defined $quote;
+
+    # update cache & last
+    $self->{'cache'}->{$id} = [ grep { $_ != $quote } @$cache ];
+    $self->{'last'} = $quote;
+
+    my $text = "$quote->{'text'}    (#$quote->{'number'}, $quote->{'score'})";
+    for my $line (split /\n/, $text) {
+        $self->say($event, $line);
+    }
+}
+
+sub bashdowngrade {
+    my $self = shift;
+    my ($event, $quote) = @_;
+
+    if ($quote && $quote->{'downgrade'}) {
+        $self->getURI($event, $quote->{'downgrade'}, 'downgrade', "http://bash.org/", "bash");
+    }
+}
+
+sub bashupgrade {
+    my $self = shift;
+    my ($event, $quote) = @_;
+    
+    if ($quote && $quote->{'upgrade'}) {
+        $self->getURI($event, $quote->{'upgrade'}, 'upgrade', "http://bash.org/", "bash");
+    }
+}
+
+sub qdblookup {
+    my $self = shift;
+    my ($event, $id, $fetched) = @_;
+    my $min = $event->{'piggy_qdb_min_score'};
+
+    my $cache = ($self->{'cache'}->{$id} or []);
+    my $quote;
+
+    # try to find a quote scored higher than $min
+    foreach my $q (@$cache) {
+        if (!defined($min) or $q->{'score'} >= $min) {
+            $quote = $q;
+            last;
+        }
+    }
+
+    # if we have found none, try to fetch more
+    if (!defined($quote) and $fetched == 0) {
+        $self->getURI($event, "http://qdb.us/$id", $id, "http://qdb.us", "qdb");
+        return;
+    }
+
+    # if we have fetched and still found none, just pick one
+    if (!defined($quote)) {
+        if (defined($min)) {
+            # min defined, try as high as possible
+            foreach my $q (@$cache) {
+                if (!defined($quote) or $q->{'score'} > $quote->{'score'}) {
+                    $quote = $q;
+                }
+            }
+        } else {
+            $quote = $cache->[0];
+        }
+    }
+
+    # if we still found none, give up
+    return unless defined $quote;
+
+    # update cache & last
+    $self->{'cache'}->{$id} = [ grep { $_ != $quote } @$cache ];
+    $self->{'last'} = $quote;
+
+    my $text = "$quote->{'text'}    (#$quote->{'number'}, $quote->{'score'})";
+    for my $line (split /\n/, $text) {
+        $self->say($event, $line);
+    }
+}
+
+sub qdbdowngrade {
+    my $self = shift;
+    my ($event, $quote) = @_;
+
+    if ($quote && $quote->{'downgrade'}) {
+        $self->getURI($event, $quote->{'downgrade'}, 'downgrade', "http://qdb.us", "qdb");
+    }
+}
+
+sub qdbupgrade {
+    my $self = shift;
+    my ($event, $quote) = @_;
+    
+    if ($quote && $quote->{'upgrade'}) {
+        $self->getURI($event, $quote->{'upgrade'}, 'upgrade', "http://qdb.us", "qdb");
+    }
+}
+
+sub omgrawrlookup {
+    my $self = shift;
+    my ($event, $id, $fetched) = @_;
+    my $min = $event->{'piggy_omgrawr_min_score'};
+
+    my $cache = ($self->{'cache'}->{$id} or []);
+    my $quote;
+
+    # try to find a quote scored higher than $min
+    foreach my $q (@$cache) {
+        if (!defined($min) or $q->{'score'} >= $min) {
+            $quote = $q;
+            last;
+        }
+    }
+
+    # if we have found none, try to fetch more
+    if (!defined($quote) and $fetched == 0) {
+        $self->getURI($event, "http://omgrawr.net/?$id", $id, "http://omgrawr.net/", "omgrawr");
+        return;
+    }
+
+    # if we have fetched and still found none, just pick one
+    if (!defined($quote)) {
+        if (defined($min)) {
+            # min defined, try as high as possible
+            foreach my $q (@$cache) {
+                if (!defined($quote) or $q->{'score'} > $quote->{'score'}) {
+                    $quote = $q;
+                }
+            }
+        } else {
+            $quote = $cache->[0];
+        }
+    }
+
+    # if we still found none, give up
+    return unless defined $quote;
+
+    # update cache & last
+    $self->{'cache'}->{$id} = [ grep { $_ != $quote } @$cache ];
+    $self->{'last'} = $quote;
+
+    my $text = "$quote->{'text'}    (#$quote->{'number'}, $quote->{'score'})";
+    for my $line (split /\n/, $text) {
+        $self->say($event, $line);
+    }
+}
+
+sub omgrawrdowngrade {
+    my $self = shift;
+    my ($event, $quote) = @_;
+
+    if ($quote && $quote->{'downgrade'}) {
+        $self->getURI($event, $quote->{'downgrade'}, 'downgrade', "http://omgrawr.net/", "omgrawr");
+    }
+}
+
+sub omgrawrupgrade {
+    my $self = shift;
+    my ($event, $quote) = @_;
+    
+    if ($quote && $quote->{'upgrade'}) {
+        $self->getURI($event, $quote->{'upgrade'}, 'upgrade', "http://omgrawr.net/", "omgrawr");
+    }
+}
+
+sub GotURI {
+    my $self = shift;
+    my ($event, $uri, $contents, $id, $link, $tag) = @_;
+
+    #$self->say($event, "goturi $id: $uri");
+    #open F, ">", "/tmp/bash";
+    #print F $contents;
+    #close F;
+    return if $id eq "upgrade" or $id eq "downgrade";
+
+    sub clean {
+        my ($q, $html) = @_;
+        chomp $q;
+        $q =~ s/<.*?>//g if $html;
+        $q =~ s/&lt;/</g;
+        $q =~ s/&gt;/>/g;
+        $q =~ s/&quot;/"/g;
+        $q =~ s/&nbsp;/ /g;
+        $q =~ s/&amp;/\&/g;
+        return $q;
+    }
+
+    my @quotes = ();
+		if ($tag eq "bash") {
+			while ($contents =~ m#<p\ class="quote">
+														<a\ href="\?([0-9]+)".*?
+														href="\./(.*?)"\ class="qa">\+</a>\((-?[0-9]+)\).*?
+														href="\./(.*?)"\ class="qa">-.*?
+														<p\ class="qt">(.*?)</p>#sgx) {
+					if ($id eq 'random' or $id eq 'random1') {
+							next if ($5 =~ tr/\n/\n/) > $self->{'max-lines'};
+					}
+					push @quotes, { 'number' => $1,
+													'upgrade' => $link . clean($2, 0),
+													'score' => $3,
+													'downgrade' => $link . clean($4, 0),
+													'text' => clean($5, 1) };
+			}
+		} else {
+			while ($contents =~ m#<span\ class=qt\ id=qt([0-9]+)>(.*?)</span>#sgx) {
+					if ($id eq 'random' or $id eq 'random1') {
+							next if ($2 =~ tr/\n/\n/) > $self->{'max-lines'};
+					}
+					push @quotes, { 'number' => $1,
+													'upgrade' => "n/a",
+													'score' => "n/a",
+													'downgrade' => "n/a",
+													'text' => clean($2, 1) };
+			}
+		}
+
+		unless (@quotes) {
+				$self->say($event, "That quote has defeated me...");
+		} else {
+				push @{$self->{'cache'}->{$id}}, @quotes;
+				if ($tag eq "bash") {
+					$self->bashlookup($event, $id, 1);
+				} elsif ($tag eq "qdb") {
+					$self->qdblookup($event, $id, 1);
+				} elsif ($tag eq "omgrawr") {
+					$self->omgrawrlookup($event, $id, 1);
+				}
+		}
+}

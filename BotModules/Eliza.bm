@@ -1,0 +1,25 @@
+package BotModules::Eliza;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+
+
+sub Baffled {
+    my $self = shift;
+    my ($event, $message) = @_;
+
+    return 20 if $event->{level} < 20;
+    
+    $self->debug('eliza, spawning');
+    $self->spawnChild($event,
+        '/home/check/eliza/eliza', [$message], 'eliza', undef);
+    
+    return 0;
+}
+
+sub ChildCompleted {
+    my $self = shift;
+    my ($event, $type, $output, @data) = @_;
+    $self->say($event, $output);
+}

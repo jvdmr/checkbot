@@ -1,0 +1,121 @@
+package BotModules::MpgX;
+use YAML::Syck;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+42;
+
+# RegisterConfig - Called when initialised, should call registerVariables
+sub RegisterConfig {
+  my $self = shift;
+  $self->SUPER::RegisterConfig(@_);
+  $self->registerVariables(
+	# [ name, save?, settable? ]
+	['maxLinesInChannel', 1, 1, 5], # beyond this answers are /msged
+  );
+}
+
+sub Help {
+	my $self = shift;
+	my ($event) = @_;
+	return {
+		'mpgx' => 'Shows the currently playing song. find out the rest for yourself'
+	};
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+	if ($message =~ /^\s*mpgx\W*$/osi) {
+		mpgx($self, $event, "now");
+	} elsif ($message =~ /^\s*mpgx\s*(.*)$/osi) {
+		my $cmd = $1;
+		if ($cmd =~ /(?:leech|get)/osi) {
+			$self->say($event, "sorry, you really don't want me to sing");
+		} else {
+			mpgx($self, $event, $cmd);
+		}
+	} else {
+		return $self->SUPER::Told(@_);
+	}
+	return 0; # we've dealt with it, no need to do anything else.
+}
+
+sub fmttime {
+	my $seconds = shift;
+	return sprintf("%d:%02d", $seconds / 60, $seconds % 60);
+}
+
+sub mpgx {
+	my ($self, $event, $cmd) = @_;
+
+	my $host = "mpgx.rave.org";
+	my $port = 6668;
+	my $urlcmd = $cmd;
+	$urlcmd =~ s/ /\//g ;
+
+	if ($cmd =~ /^(?:now)?$/) {
+		$urlcmd = "queue/1";
+	} elsif ($cmd =~ /^queue$/) {
+		$urlcmd = "queue";
+	}
+
+	my $url = "http://$host:$port/$urlcmd";
+#  $self->say($event, $url);
+	$self->getURI($event, $url, $urlcmd);
+	return 0;
+}
+
+sub GotURI {
+	my ($self, $event, $url, $html, $urlcmd) = @_;
+
+	print $html;
+	my $data;
+	if ($urlcmd =~ /queue/) {
+		$data = Load($html);
+	} else {
+		$data = $html
+	}
+	my $output = playlist($self, $event, $urlcmd, $data);
+	my @lines = split /\n/, $output;
+	if ($event->{'channel'} eq '' or scalar @lines < $self->{'maxLinesInChannel'}) {
+		$self->say($event, $output);
+	} else {
+		$self->say($event, join("\n", @lines[1..$self->{'maxLinesInChannel'}]) . "\n...there's more, rest /msged");
+		$self->directSay($event, $output);
+	}
+	return 0;
+}
+
+sub playlist {
+	my ($self, $event, $urlcmd, $data) = @_;
+
+	if ($urlcmd !~ /queue/) {
+		return $data;
+	}
+
+	my @list;
+	return "all seems quiet" unless defined $data->[0];
+	my $id = 0;
+	while (defined $data->[$id]) {
+		push(@list, $data->[$id]{":title"} . " by " . $data->[$id]{":artist"});
+		$id++;
+	}
+
+	return @list[0] if $urlcmd =~ /^queue\/1$/ ;
+
+	my $nr = 0;
+	foreach my $song (@list) {
+		$nr++;
+		if ($nr < 4){
+			$self->say($event, $song);
+		} else {
+			$self->directSay($event, $song);
+		}
+	}
+
+	if ($nr < 4){
+		return "That was all :)";
+	} else {
+		return "There's more, rest /msg'ed";
+	}
+}
