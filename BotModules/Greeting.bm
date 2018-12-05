@@ -110,10 +110,25 @@ sub Told {
     my $me = quotemeta($event->{'bot'}->nick);
     my $expandedme = join('+', split(//gos, $me)).'+';
 #    $self->debug($expandedme);
-    if ($message =~ /^\s*
+    if ($message =~ /^\s* (?: (?: de | the ) \s*)? ( people | mensen | \S* ) \s* (?: zeiden | zeggen | hebben ) \s*
 													(?:	(?:	g[ood\']*	\s*	)?
 															(?:	mornin[g\']? | evenin[g\']? | afternoon | day )
-															| hi | heya? | bonjour | hoi | w+a+[sz]+u+p+\?*
+															| (?:goeien?)?dag | hi | heya? | bonjour | hoi | w+a+[sz]+u+p+\?*
+														 	| hello | lo | wb | welcome\s+back | greetings
+														 	| yo(?:\s+yo)*(?:\s+du+de)?
+														 	| m+[ayh]+ (?:\s+m+a+i+n+)? \s+ m+a+n+
+														 	| d+u+d+e+ )
+													\s*
+													(?: gezegd )?
+													[?!1.\s]* (?: :-?[\/\(\|oOD\)Pp]\s*)* $/osix) {
+        if ($self->canGreet($event)) {
+						$event->{'from'} = $1;
+            $self->Perform($event, 'greetings');
+        }
+     } elsif ($message =~ /^\s*
+													(?:	(?:	g[ood\']*	\s*	)?
+															(?:	mornin[g\']? | evenin[g\']? | afternoon | day )
+															| (?:goeien?)?dag | hi | heya? | bonjour | hoi | w+a+[sz]+u+p+\?*
 														 	| hello | lo | wb | welcome\s+back | greetings
 														 	| yo(?:\s+yo)*(?:\s+du+de)?
 														 	| m+[ayh]+ (?:\s+m+a+i+n+)? \s+ m+a+n+
@@ -204,7 +219,7 @@ sub Heard {
     }
     my $me = quotemeta($event->{'bot'}->nick);
     my $expandedme = join('+', split(//gos, $me)).'+';
-    if ($message =~ /^\s*(?:(?:(?:(?:g[ood\']*\s*)?(?:mornin[g\']?|evenin[g\']?|afternoon|day)|hi|heya?|bonjour|hoi|w+a+[sz]+u+p+|hello|lo|wb|welcome\s+back|greetings|yo(?:\s+yo)*)\s+)?$expandedme[!1\s]*|o+h[\s,.!?]+look[\s,.!?]+a\s+$me[\s.!1]*)(?::-?[\)Pp]\s*)*$/si) {
+    if ($message =~ /^\s*(?:(?:(?:(?:g[ood\']*\s*)?(?:mornin[g\']?|evenin[g\']?|(?:goeien?)?dag|afternoon|day)|hi|heya?|bonjour|hoi|w+a+[sz]+u+p+|hello|lo|wb|welcome\s+back|greetings|yo(?:\s+yo)*)\s+)?$expandedme[!1\s]*|o+h[\s,.!?]+look[\s,.!?]+a\s+$me[\s.!1]*)(?::-?[\)Pp]\s*)*$/si) {
         if ($self->canGreet($event)) {
             $self->Perform($event, 'greetings');
         }
