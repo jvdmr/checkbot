@@ -36,19 +36,27 @@ sub Help {
 	my ($event) = @_;
 	return {
 		'bday' => 'Lists birthdays.',
-		'my bday is <day> <month> [year]' => 'Register your own birthday',
+		'my bday is <day> <month> [year]' => 'Register your own birthday. Alternatives: "my birthday is today", "<name> verjaart vandaag", "ik verjaar vandaag", "<name> verjaart op <day> <month> [year]", ...',
 	};
 }
 
 sub Told {
 	my $self = shift;
 	my ($event, $message) = @_;
-	if ($message =~ /^\s*(?:birth-?days?|b-?da[yg]|verja+rdag(?:en)?)/i) {
-		$self->sayBdays($event);
+	if ($message =~ /^\s*(?:alle?)?\s*(?:birth-?days?|b-?da[yg](?:s|en)?|verja+rdag(?:en)?)/i) {
+		if ($message =~ /\balle?\b/i) {
+			$self->sayBdays($event, 9999);
+		} else {
+			$self->sayBdays($event, 4);
+		}
 	} elsif ($message =~ /(?:my b(?:irth)-?day|(?:ik|mijn) (?:(?:verjaar|geboorte)(?:dag)?|ben))(?: is)? (?:vandaag|today)(?: jarig)?/) {
 		$self->registerBday($event, 1);
 	} elsif ($message =~ /^(\S+) (?:is|verjaart) vandaag(?: jarig)?/) {
 		$self->registerBday($event, 1, $1);
+	} elsif ($message =~ /(?:forget|vergeet) (?:my b(?:irth)-?day|mijn (?:verjaar|geboorte)dag)/) {
+		$self->forgetBday($event);
+	} elsif ($message =~ /(?:forget|vergeet) (\S+?)(?:'?s| (?:zijn|haar)) (?:b(?:irth)-?day|(?:verjaar|geboorte)dag)/) {
+		$self->forgetBday($event, $1);
 	} elsif ($message =~ /ik (?:verjaar|ben (?:geboren|jarig))(?: op)?|(?:my b(?:irth)?-?day|mijn (?:verjaar|geboorte)dag) is/) {
 		return $self->parseDateAndRegisterBday($event, $message);
 	} elsif ($message =~ /^(\S+)(?: (?:verjaart|is (?:geboren|jarig))(?: op)?|(?:'s b(?:irth)?-?day|(?:zijn|haar) (?:verjaar|geboorte)dag) is)/) {
@@ -113,8 +121,18 @@ sub registerBday {
 	}
 }
 
+sub forgetBday {
+	my ($self, $event, $who) = @_;
+	unless ($who) {
+		$who = $event->{'from'};
+	}
+	delete $self->{'bdays'}->{$who};
+	$self->saveConfig();
+	$self->say($event, "ok!");
+}
+
 sub sayBdays {
-	my ($self, $event) = @_;
+	my ($self, $event, $limit) = @_;
 
 	my ($d,$m) = (localtime)[3,4];
 
@@ -122,7 +140,7 @@ sub sayBdays {
 
 	foreach my $naam (keys %{$self->{'bdays'}}) {
 		my $time = $self->{'bdays'}->{$naam};
-		my ($sec, $min, $uur, $dag,$maand,$jaar) = (localtime($time))[0,1,2,3,4,5]; 
+		my ($sec, $min, $uur, $dag, $maand, $jaar) = (localtime($time))[0,1,2,3,4,5]; 
 		$jaar += 1900;
 
 		if ($dag == $d and $maand == $m) {
@@ -134,13 +152,16 @@ sub sayBdays {
 
 	my @sorted_data = sort { $a->[2] <=> $b->[2] || $a->[1] <=> $b->[1] } @data;
 
-	while ($sorted_data[0] and ($sorted_data[0][2] < $m
-				or $sorted_data[0][2] == $m && $sorted_data[0][1] < $d)) {
+	my $number_of_birthdays = length @sorted_data;
+	while ($number_of_birthdays > 0
+			and $sorted_data[0]
+			and ($sorted_data[0][2] < $m or $sorted_data[0][2] == $m and $sorted_data[0][1] < $d)) {
+		$number_of_birthdays--;
 		push @sorted_data, shift @sorted_data;
 	}
 
 	if (@sorted_data) {
-		my @vdagen = map { $_->[2]++; "$_->[0] $_->[1]/$_->[2]" } (scalar @sorted_data < 4 ? @sorted_data : @sorted_data[0..3]);
+		my @vdagen = map { $_->[2]++; "$_->[0] $_->[1]/$_->[2]" } (scalar @sorted_data < $limit ? @sorted_data : @sorted_data[0..3]);
 		local $"=", ";
 		$self->say($event, "Verjaardagen: @vdagen")
 	}
