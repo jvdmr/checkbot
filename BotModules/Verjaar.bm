@@ -43,6 +43,7 @@ sub Help {
 sub Told {
 	my $self = shift;
 	my ($event, $message) = @_;
+
 	if ($message =~ /^\s*(?:alle?)?\s*(?:birth-?days?|b-?da[yg](?:s|en)?|verja+rdag(?:en)?)/i) {
 		if ($message =~ /\balle?\b/i) {
 			$self->sayBdays($event, 9999);
@@ -66,6 +67,30 @@ sub Told {
 		return $self->SUPER::Told(@_);
 	}
 	return 0;
+}
+
+sub Schedule {
+	my $self = shift;
+	my ($event) = @_;
+	$self->SUPER::Schedule(@_);
+	$self->schedule($event, 0.3, 1, 'Verjaar');
+}
+
+sub Scheduled {
+	my $self = shift;
+	my ($event, @data) = @_;
+
+	my $now = time;
+	my ($dag,$maand,$jaar) = (localtime)[3,4,5];
+	my $tomorrow = timelocal(0,0,8,$dag,$maand,$jaar) + 86400; # This morning + 24 hours | avoids issues with last day of the month/year
+	my $delay = $tomorrow - $now;
+
+	$self->sayBdays($event, 0, 'announce');
+	$self->schedule($event, $delay, 1, 'Verjaar');
+
+	unless (defined(@data) and defined($data[0]) and $data[0] eq 'Verjaar') {
+		$self->SUPER::Scheduled(@_);
+	}
 }
 
 sub parseDateAndRegisterBday {
@@ -115,7 +140,7 @@ sub registerBday {
 	$self->{'bdays'}->{$who} = $time;
 	$self->saveConfig();
 	if ($vandaag) {
-		$self->say($event, "Gelukkige verjaardag, $who! *smak* *smak* *smak*")
+		$self->say($event, "Gelukkige verjaardag, $who! *smak* *smak* *smak*");
 	} else {
 		$self->say($event, "ok!");
 	}
@@ -131,8 +156,18 @@ sub forgetBday {
 	$self->say($event, "ok!");
 }
 
+sub sayOrAnnounce {
+	my ($self, $event, $text, $announce) = @_;
+	$self->debug($text);
+	if ($announce) {
+		$self->announce($event, $text);
+	} else {
+		$self->say($event, $text);
+	}
+}
+
 sub sayBdays {
-	my ($self, $event, $limit) = @_;
+	my ($self, $event, $limit, $announce) = @_;
 
 	my ($d,$m) = (localtime)[3,4];
 
@@ -140,15 +175,17 @@ sub sayBdays {
 
 	foreach my $naam (keys %{$self->{'bdays'}}) {
 		my $time = $self->{'bdays'}->{$naam};
-		my ($sec, $min, $uur, $dag, $maand, $jaar) = (localtime($time))[0,1,2,3,4,5]; 
+		my ($sec, $min, $uur, $dag, $maand, $jaar) = (localtime($time))[0,1,2,3,4,5];
 		$jaar += 1900;
 
 		if ($dag == $d and $maand == $m) {
-			$self->say($event, "Jeuj, $naam is jarig vandaag! *smak* *smak* *smak* Gelukkige verjaardag!")
+			$self->sayOrAnnounce($event, "Jeuj, $naam is jarig vandaag! *smak* *smak* *smak* Gelukkige verjaardag!", $announce);
 		} else {
 			push @data, [ $naam, int($dag), $maand ];
 		}
 	}
+
+	return if $limit == 0;
 
 	my @sorted_data = sort { $a->[2] <=> $b->[2] || $a->[1] <=> $b->[1] } @data;
 
@@ -163,6 +200,6 @@ sub sayBdays {
 	if (@sorted_data) {
 		my @vdagen = map { $_->[2]++; "$_->[0] $_->[1]/$_->[2]" } (scalar @sorted_data < $limit ? @sorted_data : @sorted_data[0..3]);
 		local $"=", ";
-		$self->say($event, "Verjaardagen: @vdagen")
+		$self->sayOrAnnounce($event, "Verjaardagen: @vdagen", $announce);
 	}
 }
