@@ -47,7 +47,7 @@ sub Eval {
 	my ($self, $event, $code) = @_;
 	$code =~ s/"/\\"/g;
 	$self->debug($code);
-	my $result = `/usr/bin/mzscheme -e "$code" 2>&1`;
+	my $result = `/usr/local/bin/mzscheme -e "$code" 2>&1`;
 	$self->say($event, $result);
 	return 0;
 }
