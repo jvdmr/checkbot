@@ -120,6 +120,7 @@ sub ChildCompleted {
 	$self->say($event, $message) if length($message) > 0;
 	if ($output =~ /<title>([^<]*)<\/title>/) {
 		$title = $title eq $url ? $1 : $title . " | " . $1;
+		$self->say($event, $title);
 	}
 	$self->writeToHistory($event, $url, $title);
 	$self->SUPER::ChildCompleted(@_);
