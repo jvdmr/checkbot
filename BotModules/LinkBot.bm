@@ -79,9 +79,9 @@ sub GotURI {
 #    my $videoId = $1;
 		$contents =~ /<title>([^<]*)<\/title>/ || return;
 		$title = $title eq $url ? $1 : $title . " | " . $1;
-		$self->say($event, $title);
+#    $self->say($event, $title);
 #    $self->spawnHead($event, "https://www.youtube.com/get_video_info?video_id=$videoId", 0, $title);
-		$self->writeToHistory($event, $url, $title);
+#    $self->writeToHistory($event, $url, $title);
 	} else {
 		$self->SUPER::GotURI(@_);
 	}
