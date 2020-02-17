@@ -153,7 +153,7 @@ sub ListItems {
         my @items = split(/\|/o, $list);
         $lists{lc shift @items} = \@items;
     }
-    if (defined(@{$lists{lc $list}})) {
+    if (@{$lists{lc $list}}) {
         my $size = scalar(@{$lists{lc $list}});
         if ($size > $self->{'maxItemsInChannel'}) {
             $self->channelSay($event, "$event->{'from'}: Your $list list contains $size items, which I am /msg'ing you.");

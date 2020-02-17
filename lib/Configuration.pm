@@ -34,7 +34,7 @@ sub Get {
         $line++; chomp;
         if (/^ *([^#;][^=\n\r]*)(?:=(.*))?$/os) {
             my $value = $$config{$1};
-            if (defined($value)) {
+            if ($value) {
                 $value = $$value while ref($value) eq 'REF';
                 if (ref($value) eq 'SCALAR') {
                     $$value = $2;
@@ -42,14 +42,14 @@ sub Get {
                     unless ($seen{$1}) {
                         @$value = ();
                     }
-                    if (defined($2)) {
+                    if ($2) {
                         push(@$value, $2);
                     }
                 } elsif (ref($value) eq 'HASH') {
                     unless ($seen{$1}) {
                         %$value = ();
                     }
-                    if (defined($2)) {
+                    if ($2) {
                         $2 =~ /^(.)(.*?)\1=>(.*)$/so;
                         $$value{$2} = $3;
                     }
@@ -92,12 +92,12 @@ sub Save {
         if (/^ *([^#;][^=\n\r]*)(?:=(.*))?$/os) {
             my $variable = $1;
             my $value = $2;
-            if (defined($$config{$variable})) {
+            if ($$config{$variable}) {
                 unless ($seen{$variable}) {
                     $value = $$config{$variable};
                     $value = $$value while ref($value) eq 'REF';
                     if (ref($value) eq 'SCALAR') {
-                        if (defined($$value)) {
+                        if ($$value) {
                             print FILE $variable.'='.$$value."\n" or confess("Could not save configuration: $!");
                         }
                     } elsif (ref($value) eq 'HASH') {
@@ -105,8 +105,8 @@ sub Save {
                         if (@keys > 0) {
                             foreach my $item (@keys) {
                                 my $data = $$value{$item};
-                                $item = '' unless defined $item;
-                                $data = '' unless defined $data;
+                                $item = '' unless $item;
+                                $data = '' unless $data;
                                 my $delimiter;
                                 foreach ('"','\'','|',':','#','*','<','>','/','[',']','{','}',
                                          '(',')','\\','=','-','@','!','\$','%','&',' ','\`','~') {
@@ -115,7 +115,7 @@ sub Save {
                                         last;
                                     }
                                 }
-                                if (defined($delimiter)) {
+                                if ($delimiter) {
                                   print FILE "$variable=$delimiter$item$delimiter=>$data\n"
                                     or confess("Could not save configuration: $!");
                                 }
@@ -127,7 +127,7 @@ sub Save {
                     } elsif (ref($value) eq 'ARRAY') {
                         if (@$value > 0) {
                             foreach my $item (@$value) {
-                                if (defined($item)) {
+                                if ($item) {
                                     print FILE "$variable=$item\n" or confess("Could not save configuration: $!");
                                 } else {
                                     print FILE "$variable=\n" or confess("Could not save configuration: $!");
@@ -142,7 +142,7 @@ sub Save {
                     $seen{$variable} = 1;
                 } # else seen it already
             } else { # unknown
-                if (defined($value)) {
+                if ($value) {
                     print FILE "$variable=$value\n" or confess("Could not save configuration: $!");
                 } else {
                     print FILE "$variable\n" or confess("Could not save configuration: $!");
@@ -171,12 +171,12 @@ sub Ensure {
     my $changed;
     foreach (@$config) {
         if (ref($$_[1]) eq 'SCALAR') {
-            unless (defined(${$$_[1]})) {
+            unless (${$$_[1]}) {
                 if (-t) {
                     print $$_[0]. ' ';
                     <> =~ /^(.*)$/os;
                     ${$$_[1]} = $1;
-                    ${$$_[1]} = '' unless defined ${$$_[1]};
+                    ${$$_[1]} = '' unless ${$$_[1]};
                     chomp(${$$_[1]});
                     $changed++;
                 } else {
@@ -184,13 +184,13 @@ sub Ensure {
                 }
             }
         } elsif (ref($$_[1]) eq 'ARRAY') {
-            unless (defined(@{$$_[1]})) {
+            unless (@{$$_[1]}) {
                 if (-t) {
                     print $$_[0]. " (enter a blank line to finish)\n";
                     my $input;
                     do {
                         $input = <>;
-                        $input = '' unless defined $input;
+                        $input = '' unless $input;
                         chomp($input);
                         push @{$$_[1]}, $input if $input;
                         $changed++;

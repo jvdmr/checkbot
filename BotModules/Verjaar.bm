@@ -88,7 +88,7 @@ sub Scheduled {
 	$self->sayBdays($event, 0, 'announce');
 	$self->schedule($event, $delay, 1, 'Verjaar');
 
-	unless (defined(@data) and defined($data[0]) and $data[0] eq 'Verjaar') {
+	unless (@data and defined($data[0]) and $data[0] eq 'Verjaar') {
 		$self->SUPER::Scheduled(@_);
 	}
 }

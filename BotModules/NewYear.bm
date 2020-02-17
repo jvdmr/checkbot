@@ -38,7 +38,7 @@ sub Scheduled {
 		$self->{'announced'} = 0;
 	}
 
-	unless (defined(@data) and defined($data[0]) and $data[0] eq 'NewYear') {
+	unless (@data and defined($data[0]) and $data[0] eq 'NewYear') {
 		$self->SUPER::Scheduled(@_);
 	}
 }

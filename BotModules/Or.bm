@@ -24,7 +24,7 @@ sub Told {
 sub choose {
 	my $self = shift;
 	my ($event, $message, @result) = @_;
-	@result = () unless defined(@result);
+	@result = () unless @result;
 	if ($message =~ /^(.*?)(?:\s+(?:or|of)|,)\s+(.*?)\s*\??$/i) {
 		my $text1 = $1;
 		my $text2 = $2;
