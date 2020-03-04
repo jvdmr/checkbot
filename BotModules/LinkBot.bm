@@ -91,7 +91,7 @@ sub spawnHead {
 	my $self = shift;
 	my ($event, $url, $shorten, $title) = @_;
 	$self->spawnChild($event, 'GET',
-		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', $url ],
+		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', '-H', 'Accept-Language: nl,en', $url ],
 		'HttpSize', [ $url, $shorten , $title]);
 }
 
