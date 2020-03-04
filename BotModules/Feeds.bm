@@ -278,8 +278,10 @@ sub Schedule {
   $self->SUPER::Schedule(@_);
   foreach my $fname (sort keys %{$self->{'siteurls'}}) {
 #    $self->debug("updating, then scheduling scraper for $fname");
-    $self->parseSite($event, $fname, 0); # first update
-    $self->schedule($event, 60*15, -1, 'Feeds', $fname);
+    if ($self->{'activesites'}{$fname}) {
+      $self->parseSite($event, $fname, 0); # first update
+      $self->schedule($event, 60*15, -1, 'Feeds', $fname);
+    }
   }
   return $self->SUPER::Schedule($event);
 }
