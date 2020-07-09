@@ -59,6 +59,15 @@ sub fliptable {
 	return $qlist[rand @qlist];
 }
 
+sub puttableback {
+	my ($self, $event, $dir) = @_;
+	my @qlist = (
+		"┬──┬◡ﾉ(° -°ﾉ)",
+	);
+
+	return $qlist[rand @qlist];
+}
+
 sub quote {
 	my ($self, $event) = @_;
 	my @qlist = (
@@ -135,6 +144,8 @@ sub Heard {
 	} elsif ($message =~ /\bfuck\b/osi) {
 #    return 0 if rand 100 > $self->{'boechance'};
 		$self->sayOrEmote($event, $self->fliptable($event));
+	} elsif ($message =~ /\bcalm\b.*\bdown\b|\bkalm(?:eer)?\b/osi) {
+		$self->sayOrEmote($event, $self->puttableback($event));
 	} elsif ($message =~ /^\.\.\.$/osi) {
 		return 0 if rand 100 > $self->{'boechance'};
 		$self->say($event, $self->quote($event));
