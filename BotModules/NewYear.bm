@@ -1,4 +1,6 @@
 package BotModules::NewYear; # Peter De Wachter <pdewacht@vub.ac.be>, Joris Vandermeersch <jovdmeer@vub.ac.be>
+use Data::Dumper;
+
 use vars qw (@ISA);
 @ISA = qw(BotModules);
 1;
@@ -6,17 +8,33 @@ use vars qw (@ISA);
 sub RegisterConfig {
 	my $self = shift;
 	$self->SUPER::RegisterConfig(@_);
+
+	my @specialDays = [];
+	for (0..11) {
+		$specialDays[$_] = [];
+	}
+
+	$specialDays[0][1] = "happy new year!"; # 1 januari, nieuwjaar (no rly)
+	$specialDays[4][25] = "Don't Panic!", # 25 mei, towel day
+	$specialDays[8][19] = "yarr!", # 19 september, international talk like a pirate day
+
 	$self->registerVariables(
 		# [ name, save?, settable? ]
 		[ 'announced', 0, 0, 0 ],
+		[ 'specialDays', 0, 0, \@specialDays ],
 	);
 }
 
 sub Schedule {
 	my $self = shift;
 	my ($event) = @_;
+	$self->schedule($event, 60, -1, 'NewYear');
 	$self->SUPER::Schedule(@_);
-	$self->schedule($event, 0.3, -1, 'NewYear');
+}
+
+sub specialDay {
+	my ($self, $mon, $day) = @_;
+	return $self->{'specialDays'}->[$mon][$day];
 }
 
 sub Scheduled {
@@ -24,14 +42,10 @@ sub Scheduled {
 	my ($event, @data) = @_;
 
 	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
-	if ($mon == 0 and $yday == 0) {
+	my $greeting = $self->specialDay($mon, $mday);
+	if ($greeting) {
 		unless ($self->{'announced'}) {
-			$self->announce($event, "happy newyear!");
-			$self->{'announced'} = 1;
-		}
-	} elsif ($mon == 8 and $mday == 19) { # 19 september is international talk like a pirate day
-		unless ($self->{'announced'}) {
-			$self->announce($event, "yarr!");
+			$self->announce($event, $greeting);
 			$self->{'announced'} = 1;
 		}
 	} else {
