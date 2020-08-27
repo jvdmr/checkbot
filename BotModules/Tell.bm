@@ -135,7 +135,7 @@ sub forgottotell {
 	if (exists $self->{'recorded'}{$who}) {
 		my $i = 0;
 		$i++ until $self->{'recorded'}{$who}[$i]{'what'} =~ /$what/;
-		splice($self->{'recorded'}{$who}, $i, 1);
+		splice(@{$self->{'recorded'}{$who}}, $i, 1);
 		delete $self->{'recorded'}{$who} unless @{$self->{'recorded'}{$who}};
 		$self->saveConfig();
 		return 0;
@@ -162,7 +162,7 @@ sub tellthem {
 			my $tellfrom = $h->{'from'};
 #      $self->debug("$tellchannel # $tellfrom -> $tellwho : $tellwhat");
 			$self->say($event,"$who: $tellfrom asked me to tell you: $tellwhat");
-			splice($self->{'recorded'}{$who}, $i, 1);
+			splice(@{$self->{'recorded'}{$who}}, $i, 1);
 			if (@{$self->{'recorded'}{$who}}) {
 				tellthem($self, $event, $to) unless $i >= @{$self->{'recorded'}{$who}};
 			} else {
