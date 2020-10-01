@@ -1,6 +1,9 @@
 package BotModules::LinkBot; #Peter De Wachter <pdewacht@vub.ac.be>
 use URI::Find;
 use WWW::Shorten 'Bitly', ':short';
+use JSON::Parse 'parse_json';
+use utf8;
+use Encode;
 use vars qw(@ISA);
 @ISA = qw(BotModules);
 1;
@@ -78,7 +81,21 @@ sub reportOnUrl {
 	my $self = shift;
 	my ($event, $url, $title) = @_;
 
-	$self->spawnHead($event, $url, 1, $title);
+	if ($url =~ /twitter.com\/[^\/]*\/status\/(\d+)(?:\?.*|\/.*)$/) {
+		my $tweet_id = $1;
+		$self->fetchTweet($event, $url, 1, $tweet_id, $title);
+	} else {
+		$self->spawnHead($event, $url, 1, $title);
+	}
+}
+
+sub fetchTweet {
+	my $self = shift;
+	my ($event, $url, $shorten, $tweet_id, $title) = @_;
+	my $bearerToken = 'FILL IN FROM TWITTER DEV ACCOUNT';
+	$self->spawnChild($event, 'GET',
+		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', '-H', 'Accept-Language: nl,en', '-H', "Authorization: Bearer $bearerToken", "https://api.twitter.com/2/tweets?ids=$tweet_id" ],
+		'HttpSize', [ $url, $shorten , $title]);
 }
 
 sub spawnHead {
@@ -112,13 +129,21 @@ sub ChildCompleted {
 		}
 	}
 	$self->say($event, $message) if length($message) > 0;
-	if ($output =~ /<title[^>]*>([^<]*)<\/title>/) {
-		my $output_title = $1;
+
+	my $output_title = '';
+	if ($url =~ /twitter.com\/[^\/]*\/status\/\d+(?:\?.*|\/.*)$/) {
+		my $tweet = parse_json($output);
+		# {"data":[{"id":"<tweet id>","text":"<tweet content>"}]}
+		$output_title = $tweet->{data}[0]{text};
+	} elsif ($output =~ /<title[^>]*>([^<]*)<\/title>/) {
+		$output_title = $1;
 		$title =~ s/^\s+|\s+$//g;
 		$output_title =~ s/^\s+|\s+$//g;
-		$title = $title eq $url ? $output_title : $title . " | " . $output_title;
-		$self->say($event, $title);
 	}
+	$title = $title eq $url ? $output_title : $title . " | " . $output_title;
+	$title = Encode::encode('utf-8', $title);
+	$self->say($event, $title);
+
 	$self->writeToHistory($event, $url, $title);
 	$self->SUPER::ChildCompleted(@_);
 }
