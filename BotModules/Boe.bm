@@ -120,6 +120,12 @@ sub goodnight {
 	return $qlist[rand @qlist];
 }
 
+sub balanceParens {
+	my ($self, $event, $number, $opening) = @_;
+
+	return "Here you go! " . ($opening eq "opening" ? '(' : ')') x $number;
+}
+
 
 sub Heard {
 	my $self = shift;
@@ -152,6 +158,8 @@ sub Heard {
 	} elsif ($message =~ /^good\.?$/osi) {
 		return 0 if rand 100 > $self->{'boechance'};
 		$self->say($event, "$event->{'from'}: I know, right?!");
+	} elsif ($message =~ /^Nope, missing (\d+) (opening|closing) parentheses.$/osi) {
+		$self->sayOrEmote($event, $self->balanceParens($event, $1, $2));
 	} else {
 		return $self->SUPER::Heard(@_);
 	}
