@@ -59,7 +59,7 @@ sub registerSite {
   $self->{'siteurls'}{"$feed:$name"} = $url;
   $self->{'siteattrs'}{"$feed:$name"} = $attrs;
 #  $self->debug("scheduling scraper for $feed:$name") unless $siteexisted;
-  $self->schedule($event, 60*15, -1, 'Feeds', "$feed:$name") unless $siteexisted;
+  $self->schedule($event, 60*60*8, -1, 'Feeds', "$feed:$name") unless $siteexisted;
   $self->parseSite($event, "$feed:$name", 1); # first update
   $self->saveConfig();
   return "$name registered in $feed";
@@ -280,7 +280,7 @@ sub Schedule {
 #    $self->debug("updating, then scheduling scraper for $fname");
     if ($self->{'activesites'}{$fname}) {
       $self->parseSite($event, $fname, 0); # first update
-      $self->schedule($event, 60*15, -1, 'Feeds', $fname);
+      $self->schedule($event, 60*60*8, -1, 'Feeds', $fname);
     }
   }
   return $self->SUPER::Schedule($event);
