@@ -4,6 +4,7 @@ use WWW::Shorten 'Bitly', ':short';
 use JSON::Parse 'parse_json';
 use utf8;
 use Encode;
+use HTML::Entities;
 use vars qw(@ISA);
 @ISA = qw(BotModules);
 1;
@@ -70,8 +71,6 @@ sub writeToHistory {
 	my ($event, $url, $title) = @_;
 	return 0 unless $self->{'history'};
 
-	$title =~ s/^\s+|\s+$//g;
-
 	open F, '>>', 'feeds/url-history' || return;
 	print F "$event->{'from'}\t$event->{'time'}\t$title\t$url\n";
 	close F;
@@ -137,11 +136,13 @@ sub ChildCompleted {
 		$output_title = $tweet->{data}[0]{text};
 	} elsif ($output =~ /<title[^>]*>([^<]*)<\/title>/) {
 		$output_title = $1;
-		$title =~ s/^\s+|\s+$//g;
-		$output_title =~ s/^\s+|\s+$//g;
 	}
 	$title = $title eq $url ? $output_title : $title . " | " . $output_title;
+	$title =~ s/\s\s+|\n+/ /g;
+	$title =~ s/^\s+|\s+$//g;
+	decode_entities($title);
 	$title = Encode::encode('utf-8', $title);
+
 	$self->say($event, $title);
 
 	$self->writeToHistory($event, $url, $title);
