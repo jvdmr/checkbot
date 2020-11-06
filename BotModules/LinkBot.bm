@@ -80,7 +80,7 @@ sub reportOnUrl {
 	my $self = shift;
 	my ($event, $url, $title) = @_;
 
-	if ($url =~ /twitter.com\/[^\/]*\/status\/(\d+)(?:\?.*|\/.*)$/) {
+	if ($url =~ /twitter.com\/[^\/]*\/status\/(\d+)(?:\?.*|\/.*)?$/) {
 		my $tweet_id = $1;
 		$self->fetchTweet($event, $url, 1, $tweet_id, $title);
 	} else {
@@ -130,7 +130,7 @@ sub ChildCompleted {
 	$self->say($event, $message) if length($message) > 0;
 
 	my $output_title = '';
-	if ($url =~ /twitter.com\/[^\/]*\/status\/\d+(?:\?.*|\/.*)$/) {
+	if ($url =~ /twitter.com\/[^\/]*\/status\/\d+(?:\?.*|\/.*)?$/) {
 		my $tweet = parse_json($output);
 		# {"data":[{"id":"<tweet id>","text":"<tweet content>"}]}
 		$output_title = $tweet->{data}[0]{text};
