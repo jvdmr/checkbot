@@ -1,6 +1,7 @@
 package BotModules::LinkBot; #Peter De Wachter <pdewacht@vub.ac.be>
 use URI::Find;
 use WWW::Shorten 'Bitly', ':short';
+use XML::LibXML;
 use JSON::Parse 'parse_json';
 use utf8;
 use Encode;
@@ -134,14 +135,23 @@ sub ChildCompleted {
 		my $tweet = parse_json($output);
 		# {"data":[{"id":"<tweet id>","text":"<tweet content>"}]}
 		$output_title = $tweet->{data}[0]{text};
-	} elsif ($output =~ /<title[^>]*>([^<]*)<\/title>/) {
-		$output_title = $1;
+	} else {
+		my $parser = XML::LibXML->new();
+		my $tree = $parser->load_html(
+			string => $output,
+			encoding => "utf-8",
+			recover => 2,
+			validation => 0,
+		);
+		my $root = $tree->getDocumentElement;
+
+		$output_title = $root->getElementsByTagName('title');
 	}
 	$title = $title eq $url ? $output_title : $title . " | " . $output_title;
 	$title =~ s/\s\s+|\n+/ /g;
 	$title =~ s/^\s+|\s+$//g;
-	decode_entities($title);
 	$title = Encode::encode('utf-8', $title);
+	decode_entities($title);
 
 	$self->say($event, $title);
 
