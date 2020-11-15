@@ -126,6 +126,12 @@ sub balanceParens {
 	return "Here you go! " . ($opening eq "opening" ? '(' : ')') x $number;
 }
 
+sub xkcd {
+	my ($self, $event, $number) = @_;
+
+	return "https://xkcd.com/$number/";
+}
+
 
 sub Heard {
 	my $self = shift;
@@ -160,6 +166,8 @@ sub Heard {
 		$self->say($event, "$event->{'from'}: I know, right?!");
 	} elsif ($message =~ /^Nope, missing (\d+) (opening|closing) parentheses.$/osi) {
 		$self->sayOrEmote($event, $self->balanceParens($event, $1, $2));
+	} elsif ($message =~ /^xkcd (\d+)(?: .*)?$/osi) {
+		$self->sayOrEmote($event, $self->xkcd($event, $1));
 	} else {
 		return $self->SUPER::Heard(@_);
 	}
