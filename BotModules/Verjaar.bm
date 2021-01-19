@@ -5,6 +5,7 @@ package BotModules::Verjaar;
 use base qw(BotModules);
 1;
 
+use Try::Tiny;
 use Time::Local;
 
 our %months = (
@@ -62,6 +63,15 @@ sub Told {
 		return $self->parseDateAndRegisterBday($event, $message);
 	} elsif ($message =~ /^(\S+)(?: (?:verjaart|is (?:geboren|jarig))(?: op)?|(?:'s b(?:irth)?-?day|(?:zijn|haar) (?:verjaar|geboorte)dag) is)/) {
 		my $who = $1;
+		if ($self->{'bdays'}->{$who}) {
+			my $time = $self->{'bdays'}->{$who};
+			my ($dag, $maand) = (localtime($time))[3,4];
+			$self->say($event, "I thought $who\'s birthday is $dag/$maand...");
+		} else {
+			return $self->parseDateAndRegisterBday($event, $message, $who);
+		}
+	} elsif ($message =~ /^(?:nee|no), (\S+)(?: (?:verjaart|is (?:geboren|jarig))(?: op)?|(?:'s b(?:irth)?-?day|(?:zijn|haar) (?:verjaar|geboorte)dag) is)/i) {
+		my $who = $1;
 		return $self->parseDateAndRegisterBday($event, $message, $who);
 	} else {
 		return $self->SUPER::Told(@_);
@@ -100,11 +110,6 @@ sub parseDateAndRegisterBday {
 	my $maand = $2;
 	my $jaar = $3;
 	return $self->SUPER::Told(@_) unless ($dag && $maand);
-	if ($maand =~ /[a-z]/i) {
-		$maand = $months{$maand};
-	} else {
-		$maand--;
-	}
 	if ($jaar) {
 		if ($jaar < 1960) {
 			if ($jaar < 100) {
@@ -115,9 +120,14 @@ sub parseDateAndRegisterBday {
 			}
 		}
 	} else {
-		$jaar = 2016; # Doesn't really matter anyway, just needs to be a valid year within the Unix epoch
+		$jaar = 2016; # Doesn't really matter anyway, just needs to be a valid year within the Unix epoch, using a leap year to allow for people's birthday being the 29th february
 	}
 	return $self->SUPER::Told(@_) unless ($dag && $maand && $jaar);
+	if ($maand =~ /[a-z]/i) {
+		$maand = $months{$maand};
+	} else {
+		$maand--;
+	}
 	$self->registerBday($event, 0, $dag, $maand, $jaar, $who);
 }
 
@@ -132,7 +142,11 @@ sub registerBday {
 			$who = $event->{'from'};
 		}
 	} else {
-		$time = timelocal(0,0,0,$dag,$maand,$jaar);
+		try {
+			$time = timelocal(0,0,0,$dag,$maand,$jaar);
+		} catch {
+			$self->say($event, "That's not a valid date, sorry!");
+		};
 		unless ($who) {
 			$who = $event->{'from'};
 		}
