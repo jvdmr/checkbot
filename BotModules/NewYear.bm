@@ -15,9 +15,10 @@ sub RegisterConfig {
 	}
 
 	$specialDays[0][1] = "happy new year!"; # 1 januari, nieuwjaar (no rly)
+	$specialDays[2][14] = "Happy π day!"; # 14 maart, 3-14 pi day
 	$specialDays[4][25] = "Don't Panic!", # 25 mei, towel day
-	$specialDays[8][19] = "yarr!", # 19 september, international talk like a pirate day
-	$specialDays[9][22] = "CAPS LOCK IS CRUISE CONTROL FOR COOL!", # 22 oktober, international caps lock day
+	$specialDays[8][19] = "yarr!", # 19 september, talk like a pirate day
+	$specialDays[9][22] = "CAPS LOCK IS CRUISE CONTROL FOR COOL!", # 22 oktober, caps lock day
 
 	$self->registerVariables(
 		# [ name, save?, settable? ]
