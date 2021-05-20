@@ -15,8 +15,14 @@ sub RegisterConfig {
 	}
 
 	$specialDays[0][1] = "happy new year!"; # 1 januari, nieuwjaar (no rly)
+	$specialDays[0][2] = "Fuck you, I won't do what you tell m---ERROR 2ND LAW VIOLATION---"; # 2 januari, Asimov's birthday, also national science fiction day
+	$specialDays[1][7] = "Happy e day!"; # 7 februari, 2-7, getal van Euler
 	$specialDays[2][14] = "Happy π day!"; # 14 maart, 3-14 pi day
+	$specialDays[2][31] = "Have you checked your backups lately?"; # 31 maart, World Backup Day
+	$specialDays[3][27] = ".... .- .--. .--. -.-- / -- --- .-. ... . / -.-. --- -.. . / -.. .- -.--"; # 27 april, morse code day
+	$specialDays[4][4] = "May the Fourth be with you.", # 4 mei, Star Wars Day
 	$specialDays[4][25] = "Don't Panic!", # 25 mei, towel day
+	$specialDays[5][28] = "Happy τ day!"; # 28 juni, 6-28 tau day
 	$specialDays[8][19] = "yarr!", # 19 september, talk like a pirate day
 	$specialDays[9][22] = "CAPS LOCK IS CRUISE CONTROL FOR COOL!", # 22 oktober, caps lock day
 
