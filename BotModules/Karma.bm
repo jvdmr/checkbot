@@ -34,6 +34,7 @@ sub Help {
             '' => 'A karma tracker. If you have authenticated (using the \'auth\' command) then it will also keep track of your own setting of people\'s karma, as well as the total of everyone\'s settings. Use the \'rank\' command to find someone\'s karma rank.',
             '++' => 'Increase someone\'s karma. Syntax: victim++',
             '--' => 'Decrease someone\'s karma. Syntax: victim--',
+            '<3' => 'Increase someone\'s karma. Syntax: victim <3',
             'rank' => 'Find someone\'s karma level. Omit the victim\'s name to get a complete listing of everyone\'s karma (long). Syntax: \'rank victim\' or just \'rank\'',
     };
 }
@@ -66,15 +67,17 @@ sub CheckKarma {
 	if ($message =~ /#\s*(.*)$/os) {
 		$reason .= $1;
 	}
-	if ($message =~ /(?:\S+|\([^\)]+\))(?:\+\+|\-\-)/) {
-		while ($message =~ m/(\S+|\([^\)]+\))(\+\+|\-\-)/g) {
-		my $victim = $1;
+	if ($message =~ /(?:\S+|\([^\)]+\))(?:\+\+|\-\-| <3)/) {
+		while ($message =~ m/(\S+|\([^\)]+\))(\+\+|\-\-| <3)/g) {
+			my $victim = $1;
 #      $victim = Substitute->alias($victim);
 			my $modifier = $2;
 			if ($modifier =~ /\+\+/) {
 				$self->ChangeKarma($event, $victim, 1, $reason);
 			} elsif ($modifier =~ /\-\-/) {
 				$self->ChangeKarma($event, $victim, -1, $reason);
+			} elsif ($modifier =~ /<3/) {
+				$self->ChangeKarma($event, $victim, 2, $reason);
 			}
 		}
 		return 1;
