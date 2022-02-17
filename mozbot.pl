@@ -96,6 +96,8 @@ use diagnostics;
 
 use local::lib;
 
+#use utf8::all;
+
 # chroot if requested
 my $CHROOT = 0;
 if ((defined($ARGV[0])) and ($ARGV[0] eq '--chroot')) {
@@ -249,6 +251,8 @@ $changed = &Configuration::Ensure([
     ['What is the e-mail address of my owner?', \$owner],
     ['What is your SMTP host?', \$Mails::smtphost],
 ]);
+## See above - jvdmr
+$password = '';
 
 # - check we have some nicks
 until (@nicks) {
@@ -760,13 +764,13 @@ sub on_destroy {
 
 sub targetted {
     my ($data, $nick) = @_;
-		if ($data =~ /^ (?: \s* $nick (?: [\s,:;.!?]+ | \s* :-\s* | \s* --+ \s* | \s* -+ >? \s+ ) ) ( .+ ) $/isx) {
+    if ($data =~ /^ (?: \s* $nick (?: [\s,:;.!?]+ | \s* :-\s* | \s* --+ \s* | \s* -+ >? \s+ ) ) ( .+ ) $/isx) {
       return (defined $1 ? $1 : '');
-		} elsif ($data =~ /^ ( .+? ) (?: [,.;!?\s]+ $nick [!?.\s]* ) $/isx) {
+    } elsif ($data =~ /^ ( .+? ) (?: [,.;!?\s]+ $nick [!?.\s]* ) $/isx) {
       return (defined $1 ? $1 : '');
-		} else {
-			return undef;
-		}
+    } else {
+      return undef;
+    }
 }
 
 # on_public: messages received on channels
@@ -1188,6 +1192,7 @@ sub splitMessageAcrossLines {
             push(@output, substr($line, 0, $pos));
             $line = substr($line, $pos);
             $line =~ s/^\s+//gos;
+            &::debug("pushed a piece");
         }
         push(@output, $line) if length($line);
     }
