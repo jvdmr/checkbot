@@ -1,10 +1,10 @@
 package BotModules::LinkBot; #Peter De Wachter <pdewacht@vub.ac.be>
 use URI::Find;
-use WWW::Shorten 'Bitly', ':short';
+use WWW::Shorten 'TinyURL', ':short';
 use XML::LibXML;
 use JSON::Parse 'parse_json';
-use utf8;
-use Encode;
+#use utf8; # tells perl the below script contains UTF-8
+#use Encode;
 use HTML::Entities;
 use vars qw(@ISA);
 @ISA = qw(BotModules);
@@ -20,8 +20,8 @@ sub RegisterConfig {
 	);
 #    $ENV{GOOGLE_USERNAME} = 'check.infogroep';
 #    $ENV{GOOGLE_PASSWORD} = 'lays3;looses';
-	$ENV{BITLY_USERNAME} = 'checkig';
-	$ENV{BITLY_TOKEN} = 'R_aa01a9ada6724f79a8f1a7b7dd605812';
+#  $ENV{BITLY_USERNAME} = 'irccheck';
+#  $ENV{BITLY_TOKEN} = '76d8a8b4929ea9f128dfc926a50015133385a51e';
 }
 
 sub Heard {
@@ -92,9 +92,10 @@ sub reportOnUrl {
 sub fetchTweet {
 	my $self = shift;
 	my ($event, $url, $shorten, $tweet_id, $title) = @_;
-	my $bearerToken = 'FILL IN FROM TWITTER DEV ACCOUNT';
+	# DONT COMMIT
+	my $bearerToken = 'AAAAAAAAAAAAAAAAAAAAAMfZIAEAAAAAbQdDj%2FZryX4TTXyxYkD720HeBws%3DMfNgbLy2ufHnkbL8oIqzDS8RmjKr8uipsrC7LlKBEwKYgeHSi7';
 	$self->spawnChild($event, 'GET',
-		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', '-H', 'Accept-Language: nl,en', '-H', "Authorization: Bearer $bearerToken", "https://api.twitter.com/2/tweets?ids=$tweet_id" ],
+		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', '-H', 'Accept-Language: nl,en', '-H', "Authorization: Bearer $bearerToken", "https://api.twitter.com/2/tweets/$tweet_id" ],
 		'HttpSize', [ $url, $shorten , $title]);
 }
 
@@ -110,7 +111,9 @@ sub ChildCompleted {
 	my $self = shift;
 	my ($event, $type, $output, $url, $shorten, $title) = @_;
 
-	my $message = length($url) > 50 ? short_link($url, $ENV{'BITLY_USERNAME'}, $ENV{'BITLY_TOKEN'}) : "";
+	my $message = length($url) > 50 ? short_link($url) : "";
+#  my $message = length($url) > 50 ? short_link($url, $ENV{BITLY_USERNAME}, $ENV{BITLY_TOKEN}) : "";
+#  my $message = "";
 	if ($type eq 'HttpSize') {
 		$output =~ /^Content-Length:\s*([0-9]+)\s*$/im;
 		my $size = $1;
@@ -132,9 +135,10 @@ sub ChildCompleted {
 
 	my $output_title = '';
 	if ($url =~ /twitter.com\/[^\/]*\/status\/\d+(?:\?.*|\/.*)?$/) {
+#    $self->debug($output);
 		my $tweet = parse_json($output);
-		# {"data":[{"id":"<tweet id>","text":"<tweet content>"}]}
-		$output_title = $tweet->{data}[0]{text};
+		# {"data":{"id":"<tweet id>","text":"<tweet content>"}}
+		$output_title = $tweet->{data}{text};
 	} else {
 		my $parser = XML::LibXML->new();
 		my $tree = $parser->load_html(
@@ -147,13 +151,16 @@ sub ChildCompleted {
 
 		my @head = $root->getElementsByTagName('head');
 		$output_title = $head[0]->getElementsByTagName('title');
-		$self->debug($output_title);
 	}
+	$self->debug($output_title);
+	$output_title = Encode::encode('UTF-8', $output_title);
+#  $self->debug($output_title);
+	decode_entities($output_title);
 	$title = $title eq $url ? $output_title : $title . " | " . $output_title;
 	$title =~ s/\s\s+|\n+/ /g;
 	$title =~ s/^\s+|\s+$//g;
-	$title = Encode::encode('utf-8', $title);
-	decode_entities($title);
+	$self->debug($title);
+	print($title);
 
 	$self->say($event, $title);
 
