@@ -6,6 +6,7 @@ use JSON::Parse 'parse_json';
 #use utf8; # tells perl the below script contains UTF-8
 #use Encode;
 use HTML::Entities;
+use Mozilla::CA;
 use vars qw(@ISA);
 @ISA = qw(BotModules);
 1;
@@ -41,7 +42,7 @@ sub Told {
 		$self->{'history'} = 1;
 		$self->saveConfig();
 		$self->say($event, "Thanks for that, it's all coming back to me now.");
-	} elsif ($message =~ /^are you drunk$/) {
+	} elsif ($message =~ /^are you drunk\??$/) {
 		$self->say($event, $self->{'history'} ? "Um, no, why would I be?" : "WOO BABY SHOW ME YER TITTIES");
 	} else {
 		$self->scanForUrl(@_);
@@ -58,67 +59,73 @@ sub scanForUrl {
 	return (URI::Find->new(
 			sub {
 				my $url = $_[1];
-				my $title = $url;
+				my $comment = "";
 				if ($message =~ / #(.*)$/) {
-					$title = $1;
+					$comment = $1;
 				}
-				$self->reportOnUrl($event, $url, $title);
+				$self->reportOnUrl($event, $url, $comment);
 			}
 		)->find(\$message) == 1);
 }
 
 sub writeToHistory {
 	my $self = shift;
-	my ($event, $url, $title) = @_;
+	my ($event, $url, $comment) = @_;
 	return 0 unless $self->{'history'};
+	$comment = "[no title]" unless length($comment) > 0;
 
 	open F, '>>', 'feeds/url-history' || return;
-	print F "$event->{'from'}\t$event->{'time'}\t$title\t$url\n";
+	print F "$event->{'from'}\t$event->{'time'}\t$comment\t$url\n";
 	close F;
 }
 
 sub reportOnUrl {
 	my $self = shift;
-	my ($event, $url, $title) = @_;
+	my ($event, $url, $comment) = @_;
 
 	if ($url =~ /twitter.com\/[^\/]*\/status\/(\d+)(?:\?.*|\/.*)?$/) {
 		my $tweet_id = $1;
-		$self->fetchTweet($event, $url, 1, $tweet_id, $title);
+		$self->fetchTweet($event, $url, 1, $tweet_id, $comment);
 	} else {
-		$self->spawnHead($event, $url, 1, $title);
+		$self->spawnHead($event, $url, 1, $comment);
 	}
 }
 
 sub fetchTweet {
 	my $self = shift;
-	my ($event, $url, $shorten, $tweet_id, $title) = @_;
+	my ($event, $url, $shorten, $tweet_id, $comment) = @_;
 	# DONT COMMIT
 	my $bearerToken = 'AAAAAAAAAAAAAAAAAAAAAMfZIAEAAAAAbQdDj%2FZryX4TTXyxYkD720HeBws%3DMfNgbLy2ufHnkbL8oIqzDS8RmjKr8uipsrC7LlKBEwKYgeHSi7';
 	$self->spawnChild($event, 'GET',
 		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', '-H', 'Accept-Language: nl,en', '-H', "Authorization: Bearer $bearerToken", "https://api.twitter.com/2/tweets/$tweet_id" ],
-		'HttpSize', [ $url, $shorten , $title]);
+		'HttpSize', [ $url, $shorten , $comment]);
 }
 
 sub spawnHead {
 	my $self = shift;
-	my ($event, $url, $shorten, $title) = @_;
+	my ($event, $url, $shorten, $comment) = @_;
 	$self->spawnChild($event, 'GET',
 		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', '-H', 'Accept-Language: nl,en', $url ],
-		'HttpSize', [ $url, $shorten , $title]);
+		'HttpSize', [ $url, $shorten , $comment]);
 }
 
 sub ChildCompleted {
 	my $self = shift;
-	my ($event, $type, $output, $url, $shorten, $title) = @_;
+	my ($event, $type, $output, $url, $shorten, $comment) = @_;
+#  $self->debug($output);
+#  $self->debug($type);
+#  $self->debug($shorten);
+#  $self->debug($comment);
 
-	my $message = length($url) > 50 ? short_link($url) : "";
-#  my $message = length($url) > 50 ? short_link($url, $ENV{BITLY_USERNAME}, $ENV{BITLY_TOKEN}) : "";
-#  my $message = "";
+	my $message = $self->shorten_url($url);
 	if ($type eq 'HttpSize') {
 		$output =~ /^Content-Length:\s*([0-9]+)\s*$/im;
 		my $size = $1;
 		$output =~ /^Content-Type:\s*(\S+)\s*$/im;
 		my $type = $1;
+
+#    $self->debug($size);
+#    $self->debug($type);
 
 		if (defined($size) and (not $shorten or $size > 1024*1024/4)) {
 			if ($shorten) {
@@ -151,21 +158,39 @@ sub ChildCompleted {
 
 		my @head = $root->getElementsByTagName('head');
 		$output_title = $head[0]->getElementsByTagName('title');
+		$output_title = "$output_title";  # turn reference into a string
 	}
-	$self->debug($output_title);
-	$output_title = Encode::encode('UTF-8', $output_title);
+#  $self->debug($output_title);
+#  $output_title = Encode::encode('UTF-8', $output_title);
 #  $self->debug($output_title);
 	decode_entities($output_title);
-	$title = $title eq $url ? $output_title : $title . " | " . $output_title;
+#  $self->debug($output_title);
+	my $title = length($comment) > 0 ? $comment . " | " . $output_title : $output_title;
+#  $self->debug($title);
 	$title =~ s/\s\s+|\n+/ /g;
 	$title =~ s/^\s+|\s+$//g;
-	$self->debug($title);
-	print($title);
+#  $self->debug($title);
+#  print($title);
 
 	$self->say($event, $title);
 
 	$self->writeToHistory($event, $url, $title);
 	$self->SUPER::ChildCompleted(@_);
+}
+
+sub shorten_url {
+	my $self = shift;
+	my $url = shift;
+	if (length($url) > 50) {
+		eval {
+			return short_link($url);
+#      return short_link($url, $ENV{BITLY_USERNAME}, $ENV{BITLY_TOKEN});
+		} or do {
+			my $e = $@;
+			$self->debug("Could not shorten url: $e");
+		}
+	}
+	return "";
 }
 
 sub formatSize {
