@@ -2,18 +2,17 @@ package Substitute;
 use strict;
 use warnings;
 
-my $aliasfile = "/home/check/mozbot/debuggers_aliases";
+my $aliasfile = "/home/check/checkbot/debuggers_aliases";
 my %aliases;
 
 # gets the contents of a file in one go, instead of going line-per-line
 sub slurpfile {
 	my ($self, $filename) = @_;
-	my $ht = $/;
+	local $/;
 	undef $/;
 	open(SFILE, "<$filename");
 	my $sfile = <SFILE>;
 	close(SFILE);
-	$/ = $ht;
 	return $sfile;
 }
 
