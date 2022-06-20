@@ -22,6 +22,7 @@ sub RegisterConfig {
 	$specialDays[3][27] = ".... .- .--. .--. -.-- / -- --- .-. ... . / -.-. --- -.. . / -.. .- -.--"; # 27 april, morse code day
 	$specialDays[4][4] = "May the Fourth be with you.", # 4 mei, Star Wars Day
 	$specialDays[4][25] = "Don't Panic!", # 25 mei, towel day
+	$specialDays[5][16] = "Make it so."; # 16 juni, stardate 47457.1, Picard Day
 	$specialDays[5][28] = "Happy τ day!"; # 28 juni, 6-28 tau day
 	$specialDays[8][19] = "yarr!", # 19 september, talk like a pirate day
 	$specialDays[9][22] = "CAPS LOCK IS CRUISE CONTROL FOR COOL!", # 22 oktober, caps lock day
