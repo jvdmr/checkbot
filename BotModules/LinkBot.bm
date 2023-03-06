@@ -4,7 +4,7 @@ use WWW::Shorten 'TinyURL', ':short';
 use XML::LibXML;
 use JSON::Parse 'parse_json';
 #use utf8; # tells perl the below script contains UTF-8
-#use Encode;
+use Encode;
 use HTML::Entities;
 use Mozilla::CA;
 use vars qw(@ISA);
@@ -161,7 +161,7 @@ sub ChildCompleted {
 		$output_title = "$output_title";  # turn reference into a string
 	}
 #  $self->debug($output_title);
-#  $output_title = Encode::encode('UTF-8', $output_title);
+	$output_title = Encode::encode('utf-8', $output_title);
 #  $self->debug($output_title);
 	decode_entities($output_title);
 #  $self->debug($output_title);
