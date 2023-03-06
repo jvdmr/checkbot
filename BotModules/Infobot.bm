@@ -2,7 +2,7 @@
 ################################
 # Infobot Module               #
 ################################
-# Last Change: Sun Nov 15 2020 23:38:05 CET
+# Last Change: Mon Mar 06 2023 10:40:29 CET
 # Maintained by: Joris Vandermeersch <joris@infogroep.be>
 # some of these ideas are stolen from infobot, of course.
 # see www.infobot.org
@@ -261,6 +261,7 @@ sub DoFactoidCheck {
 	\s+ can \s+ (?:i|one|s?he|we) \s+ (?:find|learn|read)
 	(?:\s+about)?
 	| how\s+about
+	| say
 	| what\'?s)
 	\s+ (.+?) [?!\s]* $/osix) {
 	$self->GiveFactoid($event,
