@@ -25,6 +25,7 @@ sub RegisterConfig {
 	$specialDays[5][16] = "Make it so."; # 16 juni, stardate 47457.1, Picard Day
 	$specialDays[5][28] = "Happy τ day!"; # 28 juni, 6-28 tau day
 	$specialDays[8][19] = "yarr!", # 19 september, talk like a pirate day
+	$specialDays[9]['w'][2][2] = "with Ada.Text_IO;\nuse Ada.Text_IO;\nPut_Line (\"Hello, Ada!\");", # 2e dinsdag van oktober, Ada Lovelace Day
 	$specialDays[9][22] = "CAPS LOCK IS CRUISE CONTROL FOR COOL!", # 22 oktober, caps lock day
 
 	$self->registerVariables(
@@ -42,8 +43,8 @@ sub Schedule {
 }
 
 sub specialDay {
-	my ($self, $mon, $day) = @_;
-	return $self->{'specialDays'}->[$mon][$day];
+	my ($self, $mon, $day, $wday) = @_;
+	return $self->{'specialDays'}->[$mon][$day] || $self->{'specialDays'}->[$mon]['w'][($day - 1) / 7 + 1][$wday];
 }
 
 sub Scheduled {
@@ -64,4 +65,23 @@ sub Scheduled {
 	unless (@data and defined($data[0]) and $data[0] eq 'NewYear') {
 		$self->SUPER::Scheduled(@_);
 	}
+}
+
+sub Told {
+	my $self = shift;
+	my ($event, $message) = @_;
+
+	if ($message =~ /^welke dag is het vandaag\??$/i) {
+		my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
+		my $greeting = $self->specialDay($mon, $mday);
+		if ($greeting) {
+			$self->say($event, $greeting);
+		} else {
+			$self->say($event, "No clue, sorry.");
+		}
+
+	} else {
+			return $self->SUPER::Told(@_);
+	}
+	return 0; # we've dealt with it, no need to do anything else.
 }
