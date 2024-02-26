@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w -I ~/perl5/lib/perl5
+#!/home/check/checkbot/perl/bin/perl -w -I lib
 # -*- Mode: perl; indent-tabs-mode: nil -*-
 # DO NOT REMOVE THE -T ON THE FIRST LINE!!!
 #
@@ -120,7 +120,7 @@ if ((defined($ARGV[0])) and ($ARGV[0] eq '--chroot')) {
 }
 
 # important modules
-use Net::IRC 0.7; # 0.7 is not backwards compatible with 0.63 for CTCP responses
+use Net::IRC; # 0.7; # >=0.7 is not backwards compatible with 0.63 for CTCP responses
 use IO::SecurePipe; # internal based on IO::Pipe
 use Socket;
 use POSIX ":sys_wait_h";
