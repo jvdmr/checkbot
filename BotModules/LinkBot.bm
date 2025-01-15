@@ -1,12 +1,18 @@
 package BotModules::LinkBot; #Peter De Wachter <pdewacht@vub.ac.be>
+use strict;
+use warnings;
+
+#use LWP::UserAgent;
 use URI::Find;
-use WWW::Shorten 'TinyURL', ':short';
+use WWW::Shorten::TinyURL;
+use WWW::Shorten 'TinyURL';
 use XML::LibXML;
 use JSON::Parse 'parse_json';
 #use utf8; # tells perl the below script contains UTF-8
 use Encode;
 use HTML::Entities;
 use Mozilla::CA;
+use File::Temp qw/ tempfile /;
 use vars qw(@ISA);
 @ISA = qw(BotModules);
 1;
@@ -83,51 +89,54 @@ sub reportOnUrl {
 	my $self = shift;
 	my ($event, $url, $comment) = @_;
 
-	if ($url =~ /twitter.com\/[^\/]*\/status\/(\d+)(?:\?.*|\/.*)?$/) {
-		my $tweet_id = $1;
-		$self->fetchTweet($event, $url, 1, $tweet_id, $comment);
-	} else {
-		$self->spawnHead($event, $url, 1, $comment);
-	}
-}
-
-sub fetchTweet {
-	my $self = shift;
-	my ($event, $url, $shorten, $tweet_id, $comment) = @_;
-	# DONT COMMIT
-	my $bearerToken = 'AAAAAAAAAAAAAAAAAAAAAMfZIAEAAAAAbQdDj%2FZryX4TTXyxYkD720HeBws%3DMfNgbLy2ufHnkbL8oIqzDS8RmjKr8uipsrC7LlKBEwKYgeHSi7';
-	$self->spawnChild($event, 'GET',
-		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', '-H', 'Accept-Language: nl,en', '-H', "Authorization: Bearer $bearerToken", "https://api.twitter.com/2/tweets/$tweet_id" ],
-		'HttpSize', [ $url, $shorten , $comment]);
+	$self->spawnHead($event, $url, 1, $comment);
 }
 
 sub spawnHead {
 	my $self = shift;
 	my ($event, $url, $shorten, $comment) = @_;
-	$self->spawnChild($event, 'GET',
-		[ '-H', 'User-Agent: Mozilla/5.0 (compatible; mozbot)', '-H', 'Accept-Language: nl,en', $url ],
-		'HttpSize', [ $url, $shorten , $comment]);
+	my ($tmp_headers_fh, $tmp_headers_fn) = tempfile();
+#  $self->debug("\$tmp_headers: $tmp_headers_fn");
+	$self->spawnChild(
+		$event,
+		'curl',
+		[
+			'-s', # silent
+			'-D', $tmp_headers_fn, # dump headers
+		 	'-A', 'Mozilla/5.0 (compatible; mozbot)', # user-agent
+		 	'-H', 'Accept-Language: nl,en', # other headers
+		 	$url
+		],
+		'LinkBot GET', [ $url, $shorten, $comment, $tmp_headers_fh, $tmp_headers_fn]
+	);
 }
 
 sub ChildCompleted {
 	my $self = shift;
-	my ($event, $type, $output, $url, $shorten, $comment) = @_;
-#  $self->debug($output);
-#  $self->debug($type);
-#  $self->debug($shorten);
-#  $self->debug($comment);
+	my ($event, $type, $output, $url, $shorten, $comment, $tmp_headers_fh, $tmp_headers_fn) = @_;
+#  $self->debug("\$output: $output");
+#  $self->debug("\$type: $type");
+#  $self->debug("\$shorten: $shorten");
+#  $self->debug("\$comment: $comment");
 
-	my $message = $self->shorten_url($url);
-	if ($type eq 'HttpSize') {
-		$output =~ /^Content-Length:\s*([0-9]+)\s*$/im;
-		my $size = $1;
-		$output =~ /^Content-Type:\s*(\S+)\s*$/im;
-		my $type = $1;
+	if ($type eq 'LinkBot GET') {
+		my $message = $self->shorten_url($url);
+		my $headers = <$tmp_headers_fh>;
+		File::Temp::unlink1($tmp_headers_fh, $tmp_headers_fn);
+		my ($size, $type);
+#    $self->debug("\$headers: $headers");
+		if ($headers =~ /^content-length:\s*([0-9]+)\s*$/im) {
+			$size = $1;
+		}
+		if ($headers =~ /^content-type:\s*(\S+)\s*$/im) {
+			$type = $1;
+		}
 
-#    $self->debug($size);
-#    $self->debug($type);
+#    $self->debug("\$size: $size");
+#    $self->debug("\$type: $type");
 
 		if (defined($size) and (not $shorten or $size > 1024*1024/4)) {
+			# I don't remember why we do this...
 			if ($shorten) {
 				$url =~ s/.*\/(.+)/$1/;
 				$url =~ s/%([0-9A-Za-z]{2})/chr hex $1/ge;
@@ -137,16 +146,10 @@ sub ChildCompleted {
 			$message .= ": " . $self->formatSize($size);
 			$message .= " [$type]" if defined($type);
 		}
-	}
-	$self->say($event, $message) if length($message) > 0;
+		$self->say($event, $message) if length($message) > 0;
 
-	my $output_title = '';
-	if ($url =~ /twitter.com\/[^\/]*\/status\/\d+(?:\?.*|\/.*)?$/) {
-#    $self->debug($output);
-		my $tweet = parse_json($output);
-		# {"data":{"id":"<tweet id>","text":"<tweet content>"}}
-		$output_title = $tweet->{data}{text};
-	} else {
+		my $output_title = '';
+
 		my $parser = XML::LibXML->new();
 		my $tree = $parser->load_html(
 			string => $output,
@@ -154,41 +157,51 @@ sub ChildCompleted {
 			recover => 2,
 			validation => 0,
 		);
-		my $root = $tree->getDocumentElement;
 
-		my @head = $root->getElementsByTagName('head');
-		$output_title = $head[0]->getElementsByTagName('title');
-		$output_title = "$output_title";  # turn reference into a string
+		$output_title = $tree->findvalue('/html/head/title');
+
+#    $self->debug("\$output_title: $output_title");
+		$output_title = Encode::encode('utf-8', $output_title);
+#    $self->debug("\$output_title: $output_title");
+		decode_entities($output_title);
+#    $self->debug("\$output_title: $output_title");
+		my $title = length($comment) > 0 ? $comment . " | " . $output_title : $output_title;
+#    $self->debug("\$title: $title");
+		$title =~ s/\s\s+|\n+/ /g;
+		$title =~ s/^\s+|\s+$//g;
+#    $self->debug("\$title: $title");
+
+		if ($url =~ /youtu\.?be/) {
+			$title = $self->parseYoutubeTitle($output, $title);
+		}
+
+		$self->say($event, $title);
+
+		$self->writeToHistory($event, $url, $title);
+		$self->SUPER::ChildCompleted(@_);
 	}
-#  $self->debug($output_title);
-	$output_title = Encode::encode('utf-8', $output_title);
-#  $self->debug($output_title);
-	decode_entities($output_title);
-#  $self->debug($output_title);
-	my $title = length($comment) > 0 ? $comment . " | " . $output_title : $output_title;
-#  $self->debug($title);
-	$title =~ s/\s\s+|\n+/ /g;
-	$title =~ s/^\s+|\s+$//g;
-#  $self->debug($title);
-#  print($title);
+}
 
-	$self->say($event, $title);
-
-	$self->writeToHistory($event, $url, $title);
-	$self->SUPER::ChildCompleted(@_);
+sub parseYoutubeTitle {
+	my $self = shift;
+	my ($output, $title) = @_;
+	if ($output =~ /var ytInitialData = (.*?);/) {
+		my $data_s = $1;
+		my $data = parse_json($data_s);
+		my $ytTitle = $data->{playerOverlays}{playerOverlayRenderer}{videoDetails}{playerOverlayVideoDetailsRenderer}{title}{simpleText};
+		$title = $ytTitle . " " . $title;
+	}
+	return $title;
 }
 
 sub shorten_url {
 	my $self = shift;
 	my $url = shift;
+#  $self->debug("\$url: $url");
+#  my $len = length($url);
+#  $self->debug("length(\$url): $len");
 	if (length($url) > 50) {
-		eval {
-			return short_link($url);
-#      return short_link($url, $ENV{BITLY_USERNAME}, $ENV{BITLY_TOKEN});
-		} or do {
-			my $e = $@;
-			$self->debug("Could not shorten url: $e");
-		}
+		return makeashorterlink($url);
 	}
 	return "";
 }
